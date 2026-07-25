@@ -7,6 +7,8 @@ from django.core.mail import send_mail
 
 logger = logging.getLogger(__name__)
 
+CONTENT_TYPE_JSON = "application/json"
+
 
 def notify_new_inquiry_async(inquiry):
     """Fire-and-forget: runs notifications in a background thread so the
@@ -37,6 +39,13 @@ def _send_email(inquiry):
         f"Property: {_property_title(inquiry)}\n\n"
         f"Message:\n{inquiry.message or '-'}"
     )
+    if settings.BREVO_API_KEY:
+        _send_email_via_brevo_api(subject, body)
+    else:
+        _send_email_via_smtp(subject, body)
+
+
+def _send_email_via_smtp(subject, body):
     try:
         send_mail(
             subject,
@@ -47,6 +56,32 @@ def _send_email(inquiry):
         )
     except Exception:
         logger.exception("Failed to send inquiry email notification")
+
+
+def _send_email_via_brevo_api(subject, body):
+    """Brevo's HTTPS API, used instead of SMTP in production — hosts
+    like Render block outbound SMTP ports but never HTTPS."""
+    payload = {
+        "sender": {"name": settings.SITE_NAME, "email": settings.ADMIN_NOTIFICATION_EMAIL},
+        "to": [{"email": settings.ADMIN_NOTIFICATION_EMAIL}],
+        "subject": subject,
+        "textContent": body,
+    }
+    headers = {
+        "api-key": settings.BREVO_API_KEY,
+        "Content-Type": CONTENT_TYPE_JSON,
+        "Accept": CONTENT_TYPE_JSON,
+    }
+    try:
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        logger.exception("Failed to send inquiry email notification via Brevo API")
 
 
 def _send_whatsapp(inquiry):
@@ -88,7 +123,7 @@ def _send_whatsapp_to(recipient, inquiry):
     }
     headers = {
         "Authorization": f"Bearer {settings.WHATSAPP_CLOUD_API_TOKEN}",
-        "Content-Type": "application/json",
+        "Content-Type": CONTENT_TYPE_JSON,
     }
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)

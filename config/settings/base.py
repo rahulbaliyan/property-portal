@@ -124,6 +124,14 @@ DEFAULT_FROM_EMAIL = env(
 )
 ADMIN_NOTIFICATION_EMAIL = env("ADMIN_NOTIFICATION_EMAIL", default="rahulbaliyan01@gmail.com")
 
+# Render (and most PaaS free tiers) block outbound SMTP ports entirely,
+# so the SMTP backend above can never reach Brevo's relay in production.
+# When set, inquiries/notifications.py sends via Brevo's HTTPS API
+# instead — same account, a transport that isn't blocked. Get this from
+# Brevo → Settings → SMTP & API → API Keys (a different key than the
+# SMTP key used above).
+BREVO_API_KEY = env("BREVO_API_KEY", default="")
+
 # WhatsApp: Meta WhatsApp Cloud API. All blank by default — notifications
 # are skipped silently until these are configured (see inquiries/notifications.py).
 WHATSAPP_CLOUD_API_TOKEN = env("WHATSAPP_CLOUD_API_TOKEN", default="")
