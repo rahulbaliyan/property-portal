@@ -76,6 +76,13 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {
+    # Defining STORAGES at all replaces Django's own default entirely —
+    # it does not merge in the normal "default" (media) entry for you.
+    # Without this, every ImageField/FileField save raises
+    # InvalidStorageError: "Could not find config for 'default'".
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
