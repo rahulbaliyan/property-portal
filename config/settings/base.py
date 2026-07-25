@@ -80,6 +80,11 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+# Legacy mirror of STORAGES["staticfiles"]["BACKEND"] — Django itself
+# only reads STORAGES, but django-cloudinary-storage's collectstatic
+# override checks this old-style setting directly and crashes if it's
+# missing.
+STATICFILES_STORAGE = STORAGES["staticfiles"]["BACKEND"]
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"

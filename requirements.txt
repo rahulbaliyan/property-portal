@@ -5,3 +5,5 @@ pillow==12.3.0
 gunicorn==23.0.0
 psycopg[binary]==3.2.3
 requests==2.32.3
+django-cloudinary-storage==0.3.0
+cloudinary==1.45.0

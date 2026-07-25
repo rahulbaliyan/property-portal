@@ -26,6 +26,15 @@ SECURE_HSTS_PRELOAD = True
 
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
 
+# Render's filesystem is ephemeral — anything written to MEDIA_ROOT
+# locally is wiped on every redeploy. Cloudinary persists uploaded
+# property photos properly. The cloudinary SDK reads CLOUDINARY_URL
+# from the environment automatically (cloudinary://KEY:SECRET@CLOUD_NAME).
+INSTALLED_APPS = list(INSTALLED_APPS)
+INSTALLED_APPS.insert(INSTALLED_APPS.index("django.contrib.staticfiles"), "cloudinary_storage")
+INSTALLED_APPS.append("cloudinary")
+STORAGES["default"] = {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"}
+
 # Django's default logging only prints to console when DEBUG=True and
 # otherwise tries to email admins (unconfigured here, so it fails
 # silently). Always print request errors to stdout/stderr instead, so

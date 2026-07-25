@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     branch: main
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput --upload-unhashed-files && python manage.py migrate"
     startCommand: "gunicorn config.wsgi:application"
     envVars:
       - key: DJANGO_SETTINGS_MODULE
@@ -29,4 +29,9 @@ services:
       - key: WHATSAPP_CLOUD_API_TOKEN
         sync: false
       - key: WHATSAPP_CLOUD_PHONE_NUMBER_ID
+        sync: false
+      # Cloudinary — persists property photos uploaded via admin (Render's
+      # filesystem is ephemeral and wipes local media/ on every deploy).
+      # Format: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+      - key: CLOUDINARY_URL
         sync: false
