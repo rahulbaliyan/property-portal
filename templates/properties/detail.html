@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ property.title }}{% endblock %}
+{% block meta_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
+
+{% block extra_head %}
+  {% if property.latitude and property.longitude %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'core:home' %}" class="text-decoration-none">Home</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'properties:list' %}" class="text-decoration-none">Listings</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ property.title }}</li>
+    </ol>
+  </nav>
+
+  <div class="row g-4">
+    <div class="col-lg-8">
+
+      {% with images=property.images.all %}
+      {% if images %}
+        <div id="propertyGallery" class="carousel slide gallery-main mb-2" data-bs-ride="false">
+          <div class="carousel-inner h-100">
+            {% for img in images %}
+              <div class="carousel-item h-100 {% if forloop.first %}active{% endif %}">
+                <img src="{{ img.image.url }}" class="d-block w-100 h-100" alt="{{ img.caption|default:property.title }}">
+              </div>
+            {% endfor %}
+          </div>
+          {% if images|length > 1 %}
+            <button class="carousel-control-prev" type="button" data-bs-target="#propertyGallery" data-bs-slide="prev">
+              <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+              <span class="visually-hidden">Previous</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#propertyGallery" data-bs-slide="next">
+              <span class="carousel-control-next-icon" aria-hidden="true"></span>
+              <span class="visually-hidden">Next</span>
+            </button>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="gallery-main mb-2 d-flex align-items-center justify-content-center">
+          <img src="{% static 'img/placeholder.svg' %}" alt="" class="w-50">
+        </div>
+      {% endif %}
+      {% endwith %}
+
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mt-4">
+        <div>
+          <h1 class="h3 mb-1">{{ property.title }}</h1>
+          <p class="text-muted mb-0"><i class="bi bi-geo-alt me-1"></i>{{ property.address|default:property.get_region_display }}, {{ property.get_region_display }}</p>
+        </div>
+        <div class="text-end">
+          <p class="price h3 text-brand mb-0">&#8377;{{ property.price|floatformat:0 }}</p>
+          {% if property.status != "available" %}
+            <span class="badge text-bg-warning">{{ property.get_status_display }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap gap-3 my-4">
+        <div class="spec-pill text-center flex-fill">
+          <i class="bi bi-bounding-box d-block mb-1 text-brand"></i>
+          <span class="small text-muted d-block">Area</span>
+          <strong>{{ property.area_value|floatformat:0 }} {{ property.get_area_unit_display }}</strong>
+        </div>
+        <div class="spec-pill text-center flex-fill">
+          <i class="bi bi-house d-block mb-1 text-brand"></i>
+          <span class="small text-muted d-block">Type</span>
+          <strong>{{ property.get_property_type_display }}</strong>
+        </div>
+        {% if property.bedrooms %}
+        <div class="spec-pill text-center flex-fill">
+          <i class="bi bi-door-closed d-block mb-1 text-brand"></i>
+          <span class="small text-muted d-block">Bedrooms</span>
+          <strong>{{ property.bedrooms }}</strong>
+        </div>
+        {% endif %}
+        {% if property.bathrooms %}
+        <div class="spec-pill text-center flex-fill">
+          <i class="bi bi-droplet d-block mb-1 text-brand"></i>
+          <span class="small text-muted d-block">Bathrooms</span>
+          <strong>{{ property.bathrooms }}</strong>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if property.description %}
+        <h2 class="h5 section-title">Description</h2>
+        <p class="text-muted" style="white-space: pre-line;">{{ property.description }}</p>
+      {% endif %}
+
+      {% if property.latitude and property.longitude %}
+        <h2 class="h5 section-title mt-4">Location</h2>
+        <div id="map" class="mt-3"></div>
+      {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+      <div class="sticky-inquiry">
+        <div class="card shadow-sm mb-3">
+          <div class="card-body">
+            <h2 class="h5 mb-3">Interested in this property?</h2>
+
+            {% if settings_whatsapp_number %}
+              <a class="btn btn-brand w-100 mb-3"
+                 href="https://wa.me/{{ settings_whatsapp_number }}?text=Hi%2C%20I%27m%20interested%20in%20{{ property.title|urlencode }}%20(%E2%82%B9{{ property.price|floatformat:0 }})"
+                 target="_blank" rel="noopener">
+                <i class="bi bi-whatsapp me-1"></i>Chat on WhatsApp
+              </a>
+              <div class="text-center text-muted small mb-3">or send a message</div>
+            {% endif %}
+
+            <form method="post">
+              {% csrf_token %}
+              <div class="mb-2">
+                {{ form.name }}
+                {% for error in form.name.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="mb-2">
+                {{ form.phone }}
+                {% for error in form.phone.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="mb-2">
+                {{ form.email }}
+                {% for error in form.email.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="mb-3">
+                {{ form.message }}
+                {% for error in form.message.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+              </div>
+              <button type="submit" class="btn btn-outline-brand w-100">
+                <i class="bi bi-send me-1"></i>Send Inquiry
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if related %}
+    <h2 class="h5 section-title mt-5 mb-3">Similar Properties in {{ property.get_region_display }}</h2>
+    <div class="row g-4">
+      {% for property in related %}
+        {% include "properties/_card.html" %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% if property.latitude and property.longitude %}
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+    <script>
+      const map = L.map("map").setView([{{ property.latitude }}, {{ property.longitude }}], 14);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+      L.marker([{{ property.latitude }}, {{ property.longitude }}]).addTo(map)
+        .bindPopup("{{ property.title|escapejs }}");
+    </script>
+  {% endif %}
+{% endblock %}

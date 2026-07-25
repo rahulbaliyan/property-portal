@@ -1,0 +1,120 @@
+:root {
+  --brand: #1f6f4a;
+  --brand-dark-solid: #14432c;
+  --accent: #d98e33;
+  --bg-soft: #f7f6f2;
+}
+
+body {
+  background-color: #fff;
+  color: #22282c;
+}
+
+.text-brand { color: var(--brand); }
+.bg-brand { background-color: var(--brand); }
+
+.btn-brand {
+  background-color: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.btn-brand:hover,
+.btn-brand:focus {
+  background-color: var(--brand-dark-solid);
+  border-color: var(--brand-dark-solid);
+  color: #fff;
+}
+
+.btn-outline-brand {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.btn-outline-brand:hover {
+  background-color: var(--brand);
+  color: #fff;
+}
+
+.footer-link {
+  color: #c8cdd0;
+  text-decoration: none;
+}
+.footer-link:hover { color: #fff; }
+
+/* Hero */
+.hero {
+  background: linear-gradient(135deg, var(--brand-dark-solid), var(--brand));
+  color: #fff;
+  padding: 4.5rem 0 6.5rem;
+}
+.hero h1 { font-weight: 700; }
+.hero .lead { color: rgba(255, 255, 255, 0.9); }
+
+.search-card {
+  margin-top: -4rem;
+  border-radius: 1rem;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.15);
+  border: none;
+}
+
+/* Property cards */
+.property-card {
+  border: 1px solid #eceae5;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  height: 100%;
+}
+.property-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.1);
+}
+.property-card .card-img-wrap {
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background-color: var(--bg-soft);
+}
+.property-card .card-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.property-card .price {
+  font-weight: 700;
+  color: var(--brand-dark-solid);
+}
+.property-card .badge-status-sold {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.section-title {
+  font-weight: 700;
+  border-left: 4px solid var(--accent);
+  padding-left: 0.75rem;
+}
+
+/* Detail page gallery */
+.gallery-main {
+  aspect-ratio: 16 / 10;
+  background-color: var(--bg-soft);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+.gallery-main img { width: 100%; height: 100%; object-fit: cover; }
+
+.spec-pill {
+  background-color: var(--bg-soft);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+#map { height: 320px; border-radius: 0.75rem; }
+
+.sticky-inquiry { position: sticky; top: 5.5rem; }
+
+/* Filter bar */
+.filter-bar {
+  background-color: var(--bg-soft);
+  border-radius: 0.75rem;
+}
