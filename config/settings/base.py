@@ -124,6 +124,8 @@ ADMIN_NOTIFICATION_EMAIL = env("ADMIN_NOTIFICATION_EMAIL", default="rahulbaliyan
 WHATSAPP_CLOUD_API_TOKEN = env("WHATSAPP_CLOUD_API_TOKEN", default="")
 WHATSAPP_CLOUD_PHONE_NUMBER_ID = env("WHATSAPP_CLOUD_PHONE_NUMBER_ID", default="")
 WHATSAPP_NOTIFY_TEMPLATE = env("WHATSAPP_NOTIFY_TEMPLATE", default="new_inquiry")
-# Number that receives the WhatsApp inquiry alert, digits + country code
-# (e.g. "918332943533"). Defaults to the primary WhatsApp contact number.
+# Numbers that receive the WhatsApp inquiry alert, digits + country code
+# (e.g. "918332943533"). Default to the two contact numbers; leave either
+# blank explicitly to notify only one number.
 WHATSAPP_ADMIN_NUMBER = env("WHATSAPP_ADMIN_NUMBER", default=WHATSAPP_NUMBER)
+WHATSAPP_ADMIN_NUMBER_2 = env("WHATSAPP_ADMIN_NUMBER_2", default=WHATSAPP_NUMBER_2)

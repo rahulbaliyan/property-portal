@@ -41,20 +41,26 @@ def _send_email(inquiry):
 
 
 def _send_whatsapp(inquiry):
-    if not (
-        settings.WHATSAPP_CLOUD_API_TOKEN
-        and settings.WHATSAPP_CLOUD_PHONE_NUMBER_ID
-        and settings.WHATSAPP_ADMIN_NUMBER
-    ):
+    if not (settings.WHATSAPP_CLOUD_API_TOKEN and settings.WHATSAPP_CLOUD_PHONE_NUMBER_ID):
         return
 
+    recipients = [
+        n
+        for n in (settings.WHATSAPP_ADMIN_NUMBER, settings.WHATSAPP_ADMIN_NUMBER_2)
+        if n
+    ]
+    for recipient in recipients:
+        _send_whatsapp_to(recipient, inquiry)
+
+
+def _send_whatsapp_to(recipient, inquiry):
     url = (
         f"https://graph.facebook.com/v21.0/"
         f"{settings.WHATSAPP_CLOUD_PHONE_NUMBER_ID}/messages"
     )
     payload = {
         "messaging_product": "whatsapp",
-        "to": settings.WHATSAPP_ADMIN_NUMBER,
+        "to": recipient,
         "type": "template",
         "template": {
             "name": settings.WHATSAPP_NOTIFY_TEMPLATE,
@@ -79,4 +85,4 @@ def _send_whatsapp(inquiry):
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         response.raise_for_status()
     except requests.RequestException:
-        logger.exception("Failed to send WhatsApp inquiry notification")
+        logger.exception("Failed to send WhatsApp inquiry notification to %s", recipient)
