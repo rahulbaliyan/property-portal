@@ -1,4 +1,5 @@
 import logging
+import threading
 
 import requests
 from django.conf import settings
@@ -7,7 +8,15 @@ from django.core.mail import send_mail
 logger = logging.getLogger(__name__)
 
 
-def notify_new_inquiry(inquiry):
+def notify_new_inquiry_async(inquiry):
+    """Fire-and-forget: runs notifications in a background thread so the
+    visitor's request completes immediately instead of waiting on
+    email/WhatsApp round-trips (which can take several seconds each,
+    longer if a provider is slow or unreachable)."""
+    threading.Thread(target=_notify_new_inquiry, args=(inquiry,), daemon=True).start()
+
+
+def _notify_new_inquiry(inquiry):
     """Best-effort notifications. Failures are logged, never raised —
     the inquiry is already saved, so a flaky email/WhatsApp provider
     must not turn into a 500 for the visitor."""
