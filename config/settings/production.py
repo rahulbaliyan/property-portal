@@ -7,6 +7,12 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 DATABASES = {
     "default": env.db("DATABASE_URL"),
 }
+# Without this, Django opens a fresh TCP+TLS+auth connection to Postgres
+# on every single request and tears it down at the end — expensive over
+# a WAN link to a remote host like Neon. Keep connections alive and
+# reused across requests instead.
+DATABASES["default"]["CONN_MAX_AGE"] = 600
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 # HTTPS / security hardening — the host (e.g. Render) terminates TLS and
 # forwards this header, so trust it to correctly detect HTTPS requests.
