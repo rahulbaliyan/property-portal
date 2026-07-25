@@ -37,7 +37,25 @@
           <li class="nav-item">
             <a class="nav-link" href="{% url 'properties:list' %}">Listings</a>
           </li>
-          {% if settings_whatsapp_number %}
+          {% if settings_whatsapp_number and settings_whatsapp_number_2 %}
+          <li class="nav-item dropdown ms-lg-2">
+            <button class="btn btn-brand btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-whatsapp me-1"></i>Chat with us
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item" href="https://wa.me/{{ settings_whatsapp_number }}" target="_blank" rel="noopener">
+                  <i class="bi bi-whatsapp me-2 text-accent"></i>{{ contact_phone_1 }}
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="https://wa.me/{{ settings_whatsapp_number_2 }}" target="_blank" rel="noopener">
+                  <i class="bi bi-whatsapp me-2 text-accent"></i>{{ contact_phone_2 }}
+                </a>
+              </li>
+            </ul>
+          </li>
+          {% elif settings_whatsapp_number %}
           <li class="nav-item ms-lg-2">
             <a class="btn btn-brand btn-sm" href="https://wa.me/{{ settings_whatsapp_number }}" target="_blank" rel="noopener">
               <i class="bi bi-whatsapp me-1"></i>Chat with us
@@ -94,8 +112,13 @@
             </li>
           </ul>
           {% if settings_whatsapp_number %}
-            <a class="footer-link small d-inline-flex align-items-center" href="https://wa.me/{{ settings_whatsapp_number }}" target="_blank" rel="noopener">
-              <i class="bi bi-whatsapp me-2"></i>WhatsApp us
+            <a class="footer-link small d-inline-flex align-items-center mb-1" href="https://wa.me/{{ settings_whatsapp_number }}" target="_blank" rel="noopener">
+              <i class="bi bi-whatsapp me-2"></i>WhatsApp: {{ contact_phone_1 }}
+            </a>
+          {% endif %}
+          {% if settings_whatsapp_number_2 %}
+            <a class="footer-link small d-inline-flex align-items-center" href="https://wa.me/{{ settings_whatsapp_number_2 }}" target="_blank" rel="noopener">
+              <i class="bi bi-whatsapp me-2"></i>WhatsApp: {{ contact_phone_2 }}
             </a>
           {% endif %}
         </div>

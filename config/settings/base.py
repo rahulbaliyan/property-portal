@@ -96,11 +96,13 @@ SITE_TAGLINE = env("SITE_TAGLINE", default="Building Trust. Creating Spaces.")
 CONTACT_PHONE_1 = env("CONTACT_PHONE_1", default="+91 83329 43533")
 CONTACT_PHONE_2 = env("CONTACT_PHONE_2", default="+91 95283 83995")
 
-# Digits-only phone number (with country code, no "+") used for WhatsApp
-# click-to-chat links, e.g. "919876543210". Defaults to CONTACT_PHONE_1.
-# Leave WHATSAPP_NUMBER blank explicitly to hide the WhatsApp button.
+# Digits-only phone numbers (with country code, no "+") used for WhatsApp
+# click-to-chat links, e.g. "919876543210". Default to CONTACT_PHONE_1/2.
+# Leave either blank explicitly to hide that WhatsApp option.
 _default_whatsapp = "".join(ch for ch in CONTACT_PHONE_1 if ch.isdigit())
+_default_whatsapp_2 = "".join(ch for ch in CONTACT_PHONE_2 if ch.isdigit())
 WHATSAPP_NUMBER = env("WHATSAPP_NUMBER", default=_default_whatsapp)
+WHATSAPP_NUMBER_2 = env("WHATSAPP_NUMBER_2", default=_default_whatsapp_2)
 
 # --- Inquiry notifications -------------------------------------------------
 # Email: defaults to printing to the console so local dev needs no real
