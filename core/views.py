@@ -30,3 +30,11 @@ def robots_txt(request):
         f"Sitemap: {request.scheme}://{request.get_host()}/sitemap.xml",
     ]
     return HttpResponse("\n".join(lines), content_type="text/plain")
+
+
+@require_GET
+def google_site_verification(request):
+    return HttpResponse(
+        "google-site-verification: google6ad03570e70caaee.html",
+        content_type="text/html",
+    )
