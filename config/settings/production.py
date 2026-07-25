@@ -19,3 +19,21 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
+
+# Django's default logging only prints to console when DEBUG=True and
+# otherwise tries to email admins (unconfigured here, so it fails
+# silently). Always print request errors to stdout/stderr instead, so
+# tracebacks show up in the host's log viewer without turning on DEBUG.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}
