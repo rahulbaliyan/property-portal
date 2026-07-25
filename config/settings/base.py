@@ -114,6 +114,11 @@ EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+# Without this, a blocked/unreachable SMTP port hangs the socket
+# indefinitely — long enough for gunicorn's worker timeout to kill the
+# whole worker (a SystemExit our notification code can't catch) instead
+# of failing fast with a normal, loggable exception.
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL", default=f"{SITE_NAME} <rahulbaliyan01@gmail.com>"
 )
