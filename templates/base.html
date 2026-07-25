@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#1f6f4a">
+  <meta name="theme-color" content="#16233f">
+  <link rel="icon" type="image/png" href="{% static 'img/favicon.png' %}">
   <title>{% block title %}Home{% endblock %} — {{ site_name }}</title>
   <meta name="description" content="{% block meta_description %}Plots, flats and villas for sale in Maldevta, Dehradun, Dhanaulti and Mussoorie.{% endblock %}">
 
@@ -19,7 +20,7 @@
   <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top border-bottom">
     <div class="container">
       <a class="navbar-brand fw-bold text-brand d-flex align-items-center" href="{% url 'core:home' %}">
-        <i class="bi bi-building me-2 text-accent"></i>
+        <img src="{% static 'img/logo-icon.png' %}" alt="" class="me-2">
         <span>
           Shiv <span class="brand-gold">Shakti</span> Developers
           <span class="brand-tagline d-none d-sm-block">{{ site_tagline }}</span>
