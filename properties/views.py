@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
 from inquiries.forms import InquiryForm
+from inquiries.notifications import notify_new_inquiry
 
 from .models import Property
 
@@ -87,6 +88,7 @@ def property_detail(request, slug):
             inquiry = form.save(commit=False)
             inquiry.property = property_obj
             inquiry.save()
+            notify_new_inquiry(inquiry)
             messages.success(
                 request,
                 "Thanks! Your inquiry has been sent — we'll get back to you soon.",

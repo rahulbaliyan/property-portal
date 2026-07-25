@@ -1,8 +1,9 @@
 :root {
-  --brand: #1f6f4a;
-  --brand-dark-solid: #14432c;
-  --accent: #d98e33;
-  --bg-soft: #f7f6f2;
+  --brand: #16233f;
+  --brand-dark-solid: #0b1526;
+  --accent: #c9962e;
+  --accent-light: #e0b354;
+  --bg-soft: #f8f6f0;
 }
 
 body {
@@ -12,17 +13,19 @@ body {
 
 .text-brand { color: var(--brand); }
 .bg-brand { background-color: var(--brand); }
+.text-accent { color: var(--accent); }
 
 .btn-brand {
-  background-color: var(--brand);
-  border-color: var(--brand);
-  color: #fff;
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--brand-dark-solid);
+  font-weight: 600;
 }
 .btn-brand:hover,
 .btn-brand:focus {
-  background-color: var(--brand-dark-solid);
-  border-color: var(--brand-dark-solid);
-  color: #fff;
+  background-color: var(--accent-light);
+  border-color: var(--accent-light);
+  color: var(--brand-dark-solid);
 }
 
 .btn-outline-brand {
@@ -39,6 +42,21 @@ body {
   text-decoration: none;
 }
 .footer-link:hover { color: #fff; }
+
+/* Brand */
+.navbar-brand {
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+.navbar-brand img { height: 44px; width: auto; }
+.brand-gold { color: var(--accent); }
+.brand-tagline {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a8f98;
+}
 
 /* Hero */
 .hero {
@@ -80,7 +98,7 @@ body {
 }
 .property-card .price {
   font-weight: 700;
-  color: var(--brand-dark-solid);
+  color: var(--accent);
 }
 .property-card .badge-status-sold {
   position: absolute;

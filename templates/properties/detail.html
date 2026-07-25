@@ -111,13 +111,16 @@
             <h2 class="h5 mb-3">Interested in this property?</h2>
 
             {% if settings_whatsapp_number %}
-              <a class="btn btn-brand w-100 mb-3"
+              <a class="btn btn-brand w-100 mb-2"
                  href="https://wa.me/{{ settings_whatsapp_number }}?text=Hi%2C%20I%27m%20interested%20in%20{{ property.title|urlencode }}%20(%E2%82%B9{{ property.price|floatformat:0 }})"
                  target="_blank" rel="noopener">
                 <i class="bi bi-whatsapp me-1"></i>Chat on WhatsApp
               </a>
-              <div class="text-center text-muted small mb-3">or send a message</div>
             {% endif %}
+            <a class="btn btn-outline-brand w-100 mb-3" href="tel:{{ contact_phone_1|cut:' ' }}">
+              <i class="bi bi-telephone-fill me-1"></i>Call {{ contact_phone_1 }}
+            </a>
+            <div class="text-center text-muted small mb-3">or send a message</div>
 
             <form method="post">
               {% csrf_token %}

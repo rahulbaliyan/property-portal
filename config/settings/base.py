@@ -88,6 +88,40 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_REDIRECT_URL = "/admin/"
 
+SITE_NAME = env("SITE_NAME", default="Shiv Shakti Developers")
+SITE_TAGLINE = env("SITE_TAGLINE", default="Building Trust. Creating Spaces.")
+
+# Contact numbers shown in the footer / Get in Touch section, in
+# "+91XXXXXXXXXX" display form.
+CONTACT_PHONE_1 = env("CONTACT_PHONE_1", default="+91 83329 43533")
+CONTACT_PHONE_2 = env("CONTACT_PHONE_2", default="+91 95283 83995")
+
 # Digits-only phone number (with country code, no "+") used for WhatsApp
-# click-to-chat links, e.g. "919876543210". Leave blank to hide the button.
-WHATSAPP_NUMBER = env("WHATSAPP_NUMBER", default="")
+# click-to-chat links, e.g. "919876543210". Defaults to CONTACT_PHONE_1.
+# Leave WHATSAPP_NUMBER blank explicitly to hide the WhatsApp button.
+_default_whatsapp = "".join(ch for ch in CONTACT_PHONE_1 if ch.isdigit())
+WHATSAPP_NUMBER = env("WHATSAPP_NUMBER", default=_default_whatsapp)
+
+# --- Inquiry notifications -------------------------------------------------
+# Email: defaults to printing to the console so local dev needs no real
+# SMTP credentials. Production sets EMAIL_BACKEND to the SMTP backend with
+# Brevo's relay via env vars.
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="smtp-relay.brevo.com")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL", default=f"{SITE_NAME} <rahulbaliyan01@gmail.com>"
+)
+ADMIN_NOTIFICATION_EMAIL = env("ADMIN_NOTIFICATION_EMAIL", default="rahulbaliyan01@gmail.com")
+
+# WhatsApp: Meta WhatsApp Cloud API. All blank by default — notifications
+# are skipped silently until these are configured (see inquiries/notifications.py).
+WHATSAPP_CLOUD_API_TOKEN = env("WHATSAPP_CLOUD_API_TOKEN", default="")
+WHATSAPP_CLOUD_PHONE_NUMBER_ID = env("WHATSAPP_CLOUD_PHONE_NUMBER_ID", default="")
+WHATSAPP_NOTIFY_TEMPLATE = env("WHATSAPP_NOTIFY_TEMPLATE", default="new_inquiry")
+# Number that receives the WhatsApp inquiry alert, digits + country code
+# (e.g. "918332943533"). Defaults to the primary WhatsApp contact number.
+WHATSAPP_ADMIN_NUMBER = env("WHATSAPP_ADMIN_NUMBER", default=WHATSAPP_NUMBER)

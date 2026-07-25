@@ -19,3 +19,16 @@ services:
         sync: false
       - key: WHATSAPP_NUMBER
         sync: false
+      # Brevo SMTP relay — sends the "new inquiry" email notification.
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      # Meta WhatsApp Cloud API — sends the "new inquiry" WhatsApp alert.
+      # Leave both blank to skip WhatsApp notifications.
+      - key: WHATSAPP_CLOUD_API_TOKEN
+        sync: false
+      - key: WHATSAPP_CLOUD_PHONE_NUMBER_ID
+        sync: false
