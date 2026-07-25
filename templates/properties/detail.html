@@ -3,12 +3,38 @@
 
 {% block title %}{{ property.title }}{% endblock %}
 {% block meta_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
+{% block og_type %}website{% endblock %}
+{% block og_title %}{{ property.title }} — &#8377;{{ property.price|floatformat:0 }}{% endblock %}
+{% block og_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
+{% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.image.url }}{% else %}{{ request.scheme }}://{{ request.get_host }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
 
 {% block extra_head %}
   {% if property.latitude and property.longitude %}
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
   {% endif %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "RealEstateListing",
+    "name": "{{ property.title|escapejs }}",
+    "description": "{{ property.description|default:property.title|escapejs }}",
+    "url": "{{ request.scheme }}://{{ request.get_host }}{{ request.path }}",
+    {% with img=property.images.all|first %}{% if img %}"image": "{{ img.image.url }}",{% endif %}{% endwith %}
+    "offers": {
+      "@type": "Offer",
+      "price": "{{ property.price|floatformat:0 }}",
+      "priceCurrency": "INR",
+      "availability": "{% if property.status == 'available' %}https://schema.org/InStock{% else %}https://schema.org/LimitedAvailability{% endif %}"
+    },
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "{{ property.address|default:property.get_region_display|escapejs }}",
+      "addressRegion": "Uttarakhand",
+      "addressCountry": "IN"
+    }
+  }
+  </script>
 {% endblock %}
 
 {% block content %}
