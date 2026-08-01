@@ -1,6 +1,22 @@
+from django.conf import settings
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
+
+
+def video_storage():
+    """Cloudinary requires videos to go through its video-specific
+    resource type — the default (image) storage backend rejects them.
+    Mirrors whatever STORAGES["default"] is already configured to use,
+    so local dev (FileSystemStorage) is unaffected."""
+    if settings.STORAGES["default"]["BACKEND"] == "cloudinary_storage.storage.MediaCloudinaryStorage":
+        from cloudinary_storage.storage import VideoMediaCloudinaryStorage
+
+        return VideoMediaCloudinaryStorage()
+    from django.core.files.storage import FileSystemStorage
+
+    return FileSystemStorage()
 
 
 class Property(models.Model):
@@ -93,3 +109,22 @@ class PropertyImage(models.Model):
 
     def __str__(self):
         return f"{self.property.title} image {self.pk}"
+
+
+class PropertyVideo(models.Model):
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name="videos"
+    )
+    video = models.FileField(
+        upload_to="properties/videos/%Y/%m/",
+        storage=video_storage,
+        validators=[FileExtensionValidator(["mp4", "mov", "webm", "m4v"])],
+    )
+    caption = models.CharField(max_length=200, blank=True)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.property.title} video {self.pk}"
