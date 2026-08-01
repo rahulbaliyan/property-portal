@@ -9,4 +9,5 @@ def site_settings(request):
         "site_tagline": settings.SITE_TAGLINE,
         "contact_phone_1": settings.CONTACT_PHONE_1,
         "contact_phone_2": settings.CONTACT_PHONE_2,
+        "canonical_base_url": f"https://{settings.PREFERRED_DOMAIN}",
     }

@@ -104,6 +104,12 @@ LOGIN_REDIRECT_URL = "/admin/"
 SITE_NAME = env("SITE_NAME", default="Shiv Shakti Developers")
 SITE_TAGLINE = env("SITE_TAGLINE", default="Building Trust. Creating Spaces.")
 
+# Canonical/OG URLs always point here regardless of which host (custom
+# domain vs the .onrender.com fallback) actually served the request —
+# otherwise both URLs get indexed as separate pages, splitting SEO
+# signals for identical content.
+PREFERRED_DOMAIN = env("PREFERRED_DOMAIN", default="shivashaktidevelopers.com")
+
 # Contact numbers shown in the footer / Get in Touch section, in
 # "+91XXXXXXXXXX" display form.
 CONTACT_PHONE_1 = env("CONTACT_PHONE_1", default="+91 83329 43533")

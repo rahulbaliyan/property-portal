@@ -6,7 +6,7 @@
 {% block og_type %}website{% endblock %}
 {% block og_title %}{{ property.title }} — &#8377;{{ property.price|floatformat:0 }}{% endblock %}
 {% block og_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
-{% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.image.url }}{% else %}{{ request.scheme }}://{{ request.get_host }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
+{% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.image.url }}{% else %}{{ canonical_base_url }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
 
 {% block extra_head %}
   <script type="application/ld+json">
@@ -15,7 +15,7 @@
     "@type": "RealEstateListing",
     "name": "{{ property.title|escapejs }}",
     "description": "{{ property.description|default:property.title|escapejs }}",
-    "url": "{{ request.scheme }}://{{ request.get_host }}{{ request.path }}",
+    "url": "{{ canonical_base_url }}{{ request.path }}",
     {% with img=property.images.all|first %}{% if img %}"image": "{{ img.image.url }}",{% endif %}{% endwith %}
     "offers": {
       "@type": "Offer",
