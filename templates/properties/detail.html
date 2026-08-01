@@ -9,10 +9,6 @@
 {% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.image.url }}{% else %}{{ request.scheme }}://{{ request.get_host }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
 
 {% block extra_head %}
-  {% if property.latitude and property.longitude %}
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
-  {% endif %}
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -144,8 +140,17 @@
       {% endwith %}
 
       {% if property.latitude and property.longitude %}
-        <h2 class="h5 section-title mt-4">Location</h2>
-        <div id="map" class="mt-3"></div>
+        <div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+          <h2 class="h5 section-title mb-0">Location</h2>
+          <a class="btn btn-brand btn-sm"
+             href="https://www.google.com/maps/dir/?api=1&destination={{ property.latitude }},{{ property.longitude }}"
+             target="_blank" rel="noopener">
+            <i class="bi bi-signpost-2 me-1"></i>Get Directions
+          </a>
+        </div>
+        <iframe id="map" class="w-100" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+                title="Map showing the location of {{ property.title }}"
+                src="https://www.google.com/maps?q={{ property.latitude }},{{ property.longitude }}&output=embed"></iframe>
       {% endif %}
     </div>
 
@@ -211,19 +216,4 @@
     </div>
   {% endif %}
 </div>
-{% endblock %}
-
-{% block extra_scripts %}
-  {% if property.latitude and property.longitude %}
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-    <script>
-      const map = L.map("map").setView([{{ property.latitude }}, {{ property.longitude }}], 14);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(map);
-      L.marker([{{ property.latitude }}, {{ property.longitude }}]).addTo(map)
-        .bindPopup("{{ property.title|escapejs }}");
-    </script>
-  {% endif %}
 {% endblock %}
