@@ -21,7 +21,11 @@
         <p class="small text-muted mb-2">
           <i class="bi bi-geo-alt me-1"></i>{{ property.get_region_display }}
         </p>
-        <p class="price h5 mb-2">&#8377;{{ property.price|floatformat:0 }}</p>
+        {% if property.price %}
+          <p class="price h5 mb-2">&#8377;{{ property.price|floatformat:0 }}</p>
+        {% else %}
+          <p class="price h6 mb-2"><i class="bi bi-telephone-fill me-1"></i>Call for Price</p>
+        {% endif %}
         <div class="d-flex flex-wrap gap-2 small text-muted">
           <span class="badge text-bg-light border">{{ property.get_property_type_display }}</span>
           <span class="badge text-bg-light border">{{ property.area_value|floatformat:0 }} {{ property.get_area_unit_display }}</span>

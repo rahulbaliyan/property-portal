@@ -4,7 +4,7 @@
 {% block title %}{{ property.title }}{% endblock %}
 {% block meta_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
 {% block og_type %}website{% endblock %}
-{% block og_title %}{{ property.title }} — &#8377;{{ property.price|floatformat:0 }}{% endblock %}
+{% block og_title %}{{ property.title }}{% if property.price %} — &#8377;{{ property.price|floatformat:0 }}{% endif %}{% endblock %}
 {% block og_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
 {% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.image.url }}{% else %}{{ canonical_base_url }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
 
@@ -17,12 +17,14 @@
     "description": "{{ property.description|default:property.title|escapejs }}",
     "url": "{{ canonical_base_url }}{{ request.path }}",
     {% with img=property.images.all|first %}{% if img %}"image": "{{ img.image.url }}",{% endif %}{% endwith %}
+    {% if property.price %}
     "offers": {
       "@type": "Offer",
       "price": "{{ property.price|floatformat:0 }}",
       "priceCurrency": "INR",
       "availability": "{% if property.status == 'available' %}https://schema.org/InStock{% else %}https://schema.org/LimitedAvailability{% endif %}"
     },
+    {% endif %}
     "address": {
       "@type": "PostalAddress",
       "streetAddress": "{{ property.address|default:property.get_region_display|escapejs }}",
@@ -81,7 +83,23 @@
           <p class="text-muted mb-0"><i class="bi bi-geo-alt me-1"></i>{{ property.address|default:property.get_region_display }}, {{ property.get_region_display }}</p>
         </div>
         <div class="text-end">
-          <p class="price h3 text-brand mb-0">&#8377;{{ property.price|floatformat:0 }}</p>
+          {% if property.price %}
+            <p class="price h3 text-brand mb-0">&#8377;{{ property.price|floatformat:0 }}</p>
+          {% else %}
+            <p class="text-muted small mb-2">Price on Request</p>
+            <div class="d-flex gap-2 justify-content-end flex-wrap mb-2">
+              <a class="btn btn-brand btn-sm" href="tel:{{ contact_phone_1|cut:' ' }}">
+                <i class="bi bi-telephone-fill me-1"></i>Call
+              </a>
+              {% if settings_whatsapp_number %}
+                <a class="btn btn-outline-brand btn-sm"
+                   href="https://wa.me/{{ settings_whatsapp_number }}?text={{ property.whatsapp_message|urlencode }}"
+                   target="_blank" rel="noopener">
+                  <i class="bi bi-whatsapp me-1"></i>WhatsApp
+                </a>
+              {% endif %}
+            </div>
+          {% endif %}
           {% if property.status != "available" %}
             <span class="badge text-bg-warning">{{ property.get_status_display }}</span>
           {% endif %}
@@ -162,14 +180,14 @@
 
             {% if settings_whatsapp_number %}
               <a class="btn btn-brand w-100 mb-2"
-                 href="https://wa.me/{{ settings_whatsapp_number }}?text=Hi%2C%20I%27m%20interested%20in%20{{ property.title|urlencode }}%20(%E2%82%B9{{ property.price|floatformat:0 }})"
+                 href="https://wa.me/{{ settings_whatsapp_number }}?text={{ property.whatsapp_message|urlencode }}"
                  target="_blank" rel="noopener">
                 <i class="bi bi-whatsapp me-1"></i>WhatsApp {{ contact_phone_1 }}
               </a>
             {% endif %}
             {% if settings_whatsapp_number_2 %}
               <a class="btn btn-brand w-100 mb-2"
-                 href="https://wa.me/{{ settings_whatsapp_number_2 }}?text=Hi%2C%20I%27m%20interested%20in%20{{ property.title|urlencode }}%20(%E2%82%B9{{ property.price|floatformat:0 }})"
+                 href="https://wa.me/{{ settings_whatsapp_number_2 }}?text={{ property.whatsapp_message|urlencode }}"
                  target="_blank" rel="noopener">
                 <i class="bi bi-whatsapp me-1"></i>WhatsApp {{ contact_phone_2 }}
               </a>

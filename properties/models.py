@@ -50,7 +50,10 @@ class Property(models.Model):
     property_type = models.CharField(max_length=10, choices=PropertyType.choices)
     region = models.CharField(max_length=20, choices=Region.choices)
     address = models.CharField(max_length=255, blank=True)
-    price = models.DecimalField(max_digits=12, decimal_places=2)
+    price = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Leave blank for 'Price on Request' — shows Call/WhatsApp links instead.",
+    )
     area_value = models.DecimalField(max_digits=10, decimal_places=2)
     area_unit = models.CharField(
         max_length=10, choices=AreaUnit.choices, default=AreaUnit.SQFT
@@ -96,6 +99,11 @@ class Property(models.Model):
 
     def get_absolute_url(self):
         return reverse("properties:detail", kwargs={"slug": self.slug})
+
+    def whatsapp_message(self):
+        if self.price:
+            return f"Hi, I'm interested in {self.title} (₹{self.price:.0f})"
+        return f"Hi, I'm interested in {self.title} - please share the price"
 
 
 class PropertyImage(models.Model):
