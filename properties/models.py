@@ -30,9 +30,11 @@ class Property(models.Model):
         DEHRADUN = "dehradun", "Dehradun"
         DHANAULTI = "dhanaulti", "Dhanaulti"
         MUSSOORIE = "mussoorie", "Mussoorie"
+        SAHASTRADHARA = "sahastradhara", "Sahastradhara"
 
     class AreaUnit(models.TextChoices):
         SQFT = "sqft", "Sq. Ft."
+        GAJ = "gaj", "Gaj"
         NALI = "nali", "Nali"
         BIGHA = "bigha", "Bigha"
         ACRE = "acre", "Acre"
