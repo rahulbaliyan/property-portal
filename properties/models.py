@@ -22,6 +22,7 @@ def video_storage():
 class Property(models.Model):
     class PropertyType(models.TextChoices):
         PLOT = "plot", "Plot"
+        LAND = "land", "Land / Zameen"
         FLAT = "flat", "Flat"
         VILLA = "villa", "Villa"
         FARMHOUSE = "farmhouse", "Farmhouse"
