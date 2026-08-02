@@ -87,6 +87,7 @@ body {
   box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.1);
 }
 .property-card .card-img-wrap {
+  position: relative;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   background-color: var(--bg-soft);
@@ -95,6 +96,22 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.video-preview-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background-color: rgba(22, 35, 63, 0.75);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  pointer-events: none;
 }
 .property-card .price {
   font-weight: 700;

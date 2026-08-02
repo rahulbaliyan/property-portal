@@ -167,3 +167,22 @@ class PropertyVideo(models.Model):
             secure=True,
         )
         return url
+
+    def thumbnail_url(self):
+        """A still frame Cloudinary extracts from the video, used as a
+        preview image wherever a listing has a video but no photos.
+        None locally — generating a frame without Cloudinary would
+        need ffmpeg, which isn't worth adding for a dev-only fallback."""
+        if settings.STORAGES["default"]["BACKEND"] != "cloudinary_storage.storage.MediaCloudinaryStorage":
+            return None
+
+        import cloudinary
+
+        url, _ = cloudinary.utils.cloudinary_url(
+            self.video.name,
+            resource_type="video",
+            format="jpg",
+            quality="auto",
+            secure=True,
+        )
+        return url

@@ -71,9 +71,18 @@
           {% endif %}
         </div>
       {% else %}
-        <div class="gallery-main mb-2 d-flex align-items-center justify-content-center">
-          <img src="{% static 'img/placeholder.svg' %}" alt="" class="w-50">
-        </div>
+        {% with vid=property.videos.all|first %}
+        {% if vid and vid.thumbnail_url %}
+          <div class="gallery-main mb-2 position-relative">
+            <img src="{{ vid.thumbnail_url }}" alt="{{ vid.caption|default:property.title }}" class="w-100 h-100" style="object-fit: cover;">
+            <span class="video-preview-badge" style="width: 4rem; height: 4rem; font-size: 1.75rem;"><i class="bi bi-play-fill"></i></span>
+          </div>
+        {% else %}
+          <div class="gallery-main mb-2 d-flex align-items-center justify-content-center">
+            <img src="{% static 'img/placeholder.svg' %}" alt="" class="w-50">
+          </div>
+        {% endif %}
+        {% endwith %}
       {% endif %}
       {% endwith %}
 

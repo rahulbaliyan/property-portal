@@ -7,7 +7,14 @@
         {% if img %}
           <img src="{{ img.image.url }}" alt="{{ img.caption|default:property.title }}" loading="lazy">
         {% else %}
-          <img src="{% static 'img/placeholder.svg' %}" alt="" loading="lazy">
+          {% with vid=property.videos.all|first %}
+          {% if vid and vid.thumbnail_url %}
+            <img src="{{ vid.thumbnail_url }}" alt="{{ vid.caption|default:property.title }}" loading="lazy">
+            <span class="video-preview-badge"><i class="bi bi-play-fill"></i></span>
+          {% else %}
+            <img src="{% static 'img/placeholder.svg' %}" alt="" loading="lazy">
+          {% endif %}
+          {% endwith %}
         {% endif %}
       </div>
       {% endwith %}
