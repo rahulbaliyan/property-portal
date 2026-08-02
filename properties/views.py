@@ -1,9 +1,11 @@
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET, require_http_methods
 
 from inquiries.forms import InquiryForm
@@ -19,6 +21,7 @@ def _parse_decimal(value):
         return None
 
 
+@cache_page(settings.PAGE_CACHE_SECONDS)
 @require_GET
 def property_list(request):
     qs = Property.objects.exclude(status=Property.Status.SOLD).prefetch_related(

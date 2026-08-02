@@ -127,7 +127,7 @@
           {% for vid in videos %}
             <div class="col-md-6">
               <video controls preload="metadata" class="w-100 rounded" style="background:#000;">
-                <source src="{{ vid.video.url }}">
+                <source src="{{ vid.optimized_url }}">
                 Your browser doesn't support embedded videos.
               </video>
               {% if vid.caption %}

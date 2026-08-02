@@ -101,6 +101,21 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_REDIRECT_URL = "/admin/"
 
+# In-process cache — fine given the single gunicorn worker (WEB_CONCURRENCY=1)
+# this runs under on Render's free tier. It resets on every deploy/restart
+# and wouldn't be shared if ever scaled to multiple workers; if that
+# changes, swap this for a real cache server (e.g. Redis).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "property-portal",
+    }
+}
+# How long cached pages (home, listings) stay stale before a new
+# admin-added/edited property shows up. GET-only pages with no
+# per-visitor content, so this is safe to share across everyone.
+PAGE_CACHE_SECONDS = env.int("PAGE_CACHE_SECONDS", default=300)
+
 SITE_NAME = env("SITE_NAME", default="Shiv Shakti Developers")
 SITE_TAGLINE = env("SITE_TAGLINE", default="Building Trust. Creating Spaces.")
 

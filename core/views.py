@@ -1,10 +1,13 @@
+from django.conf import settings
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET
 
 from properties.models import Property
 
 
+@cache_page(settings.PAGE_CACHE_SECONDS)
 @require_GET
 def home(request):
     available = Property.objects.exclude(status=Property.Status.SOLD).prefetch_related(

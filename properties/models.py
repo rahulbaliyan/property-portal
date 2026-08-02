@@ -128,3 +128,27 @@ class PropertyVideo(models.Model):
 
     def __str__(self):
         return f"{self.property.title} video {self.pk}"
+
+    def optimized_url(self):
+        """Cloudinary transcodes to a smaller codec/bitrate and serves
+        the best format for the requesting browser on the fly (cached
+        at their CDN edge after the first view) — cuts bandwidth per
+        view substantially without re-encoding/duplicating the stored
+        original. No-op locally, where videos aren't on Cloudinary.
+
+        A plain method, not @property — this model's FK field is
+        itself named "property", which shadows the property() builtin
+        within this class body."""
+        if settings.STORAGES["default"]["BACKEND"] != "cloudinary_storage.storage.MediaCloudinaryStorage":
+            return self.video.url
+
+        import cloudinary
+
+        url, _ = cloudinary.utils.cloudinary_url(
+            self.video.name,
+            resource_type="video",
+            quality="auto",
+            fetch_format="auto",
+            secure=True,
+        )
+        return url
