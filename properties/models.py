@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
@@ -133,7 +132,6 @@ class PropertyVideo(models.Model):
     video = models.FileField(
         upload_to="properties/videos/%Y/%m/",
         storage=video_storage,
-        validators=[FileExtensionValidator(["mp4", "mov", "webm", "m4v"])],
     )
     caption = models.CharField(max_length=200, blank=True)
     order = models.PositiveSmallIntegerField(default=0)
