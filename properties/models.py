@@ -24,6 +24,7 @@ class Property(models.Model):
         PLOT = "plot", "Plot"
         FLAT = "flat", "Flat"
         VILLA = "villa", "Villa"
+        FARMHOUSE = "farmhouse", "Farmhouse"
 
     class Region(models.TextChoices):
         MALDEVTA = "maldevta", "Maldevta"

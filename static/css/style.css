@@ -136,3 +136,38 @@ body {
   background-color: var(--bg-soft);
   border-radius: 0.75rem;
 }
+
+/* Trust stats strip */
+.trust-stats {
+  background-color: var(--bg-soft);
+  border-radius: 1rem;
+}
+.trust-stat .stat-number {
+  font-weight: 800;
+  color: var(--brand);
+  line-height: 1;
+}
+.trust-stat .stat-number .text-accent { font-weight: 800; }
+
+/* Services */
+.service-card {
+  background-color: #fff;
+  border: 1px solid #eceae5;
+  border-radius: 0.75rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.08);
+  border-color: var(--accent);
+}
+.service-card .service-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: var(--bg-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
