@@ -33,6 +33,9 @@ class Property(models.Model):
         DHANAULTI = "dhanaulti", "Dhanaulti"
         MUSSOORIE = "mussoorie", "Mussoorie"
         SAHASTRADHARA = "sahastradhara", "Sahastradhara"
+        GARHWAL = "garhwal", "Garhwal"
+        THANO = "thano", "Thano"
+        RISHIKESH = "rishikesh", "Rishikesh"
 
     class AreaUnit(models.TextChoices):
         SQFT = "sqft", "Sq. Ft."
