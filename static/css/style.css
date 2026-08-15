@@ -188,3 +188,12 @@ body {
   justify-content: center;
   margin: 0 auto;
 }
+
+/* Sell Your Property */
+.sell-trust-strip {
+  background-color: var(--bg-soft);
+  border-radius: 1rem;
+}
+.sell-form-card {
+  border-radius: 1rem;
+}

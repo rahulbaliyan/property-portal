@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Sell Your Property{% endblock %}
+{% block meta_description %}List your plot, flat, villa or house with {{ site_name }}. Free to submit, reviewed by our team, and your contact details stay private.{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container text-center">
+    <h1 class="display-6">List Your Property With Us</h1>
+    <p class="lead col-lg-8 mx-auto">Reach genuine buyers across Uttarakhand. We review every submission, handle buyer inquiries on your behalf, and keep your contact details completely private.</p>
+  </div>
+</section>
+
+<div class="container">
+  <div class="row g-3 text-center py-4 py-md-5 mx-0 sell-trust-strip">
+    <div class="col-6 col-md-3">
+      <i class="bi bi-patch-check-fill h3 text-accent d-block mb-1"></i>
+      <p class="small text-muted mb-0">Reviewed by our team</p>
+    </div>
+    <div class="col-6 col-md-3">
+      <i class="bi bi-shield-lock-fill h3 text-accent d-block mb-1"></i>
+      <p class="small text-muted mb-0">Your contact stays private</p>
+    </div>
+    <div class="col-6 col-md-3">
+      <i class="bi bi-cash-coin h3 text-accent d-block mb-1"></i>
+      <p class="small text-muted mb-0">Free to submit</p>
+    </div>
+    <div class="col-6 col-md-3">
+      <i class="bi bi-headset h3 text-accent d-block mb-1"></i>
+      <p class="small text-muted mb-0">We handle buyer inquiries</p>
+    </div>
+  </div>
+</div>
+
+<div class="container mb-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-9">
+      <div class="card shadow-sm border-0 sell-form-card">
+        <div class="card-body p-4 p-md-5">
+          <form method="post" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+            <div class="d-none">
+              {{ form.website }}
+            </div>
+
+            {% if form.non_field_errors %}
+              <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <h2 class="h5 section-title mb-4">Property Details</h2>
+            <div class="row g-3 mb-4">
+              <div class="col-12">
+                <label class="form-label small text-muted" for="{{ form.title.id_for_label }}">Title</label>
+                {{ form.title }}
+                {% for error in form.title.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.property_type.id_for_label }}">Property Type</label>
+                {{ form.property_type }}
+                {% for error in form.property_type.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.listing_intent.id_for_label }}">Sale or Rent?</label>
+                {{ form.listing_intent }}
+                {% for error in form.listing_intent.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small text-muted" for="{{ form.price.id_for_label }}">Price</label>
+                {{ form.price }}
+                <div class="form-text">Optional — kept private, never shown publicly.</div>
+                {% for error in form.price.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.area_value.id_for_label }}">Area</label>
+                {{ form.area_value }}
+                {% for error in form.area_value.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.area_unit.id_for_label }}">Unit</label>
+                {{ form.area_unit }}
+                {% for error in form.area_unit.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.bedrooms.id_for_label }}">Bedrooms</label>
+                {{ form.bedrooms }}
+                {% for error in form.bedrooms.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.bathrooms.id_for_label }}">Bathrooms</label>
+                {{ form.bathrooms }}
+                {% for error in form.bathrooms.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-12">
+                <label class="form-label small text-muted" for="{{ form.description.id_for_label }}">Description</label>
+                {{ form.description }}
+                {% for error in form.description.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <h2 class="h5 section-title mb-4">Location</h2>
+            <div class="row g-3 mb-4">
+              <div class="col-sm-6">
+                <label class="form-label small text-muted" for="{{ form.region.id_for_label }}">Region</label>
+                {{ form.region }}
+                {% for error in form.region.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label small text-muted" for="{{ form.address.id_for_label }}">Address / Landmark</label>
+                {{ form.address }}
+                {% for error in form.address.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <h2 class="h5 section-title mb-2">Photos</h2>
+            <p class="text-muted small mb-3">Upload a few clear photos — up to 10. Not required to submit, but listings with photos get reviewed faster.</p>
+            <div class="mb-4">
+              <input type="file" name="photos" id="photos" class="form-control" accept="image/*" multiple>
+            </div>
+
+            <h2 class="h5 section-title mb-2">Your Contact Information</h2>
+            <p class="small mb-3"><i class="bi bi-lock-fill text-accent me-1"></i>Kept private — only our team can see this. Never shown to buyers.</p>
+            <div class="row g-3 mb-4">
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.seller_name.id_for_label }}">Your Name</label>
+                {{ form.seller_name }}
+                {% for error in form.seller_name.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-sm-6 col-md-4">
+                <label class="form-label small text-muted" for="{{ form.seller_phone.id_for_label }}">Phone Number</label>
+                {{ form.seller_phone }}
+                {% for error in form.seller_phone.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small text-muted" for="{{ form.seller_email.id_for_label }}">Email</label>
+                {{ form.seller_email }}
+                {% for error in form.seller_email.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-brand btn-lg w-100">
+              <i class="bi bi-send-check me-1"></i>Submit for Review
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

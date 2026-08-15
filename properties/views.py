@@ -11,7 +11,8 @@ from django.views.decorators.http import require_GET, require_http_methods
 from inquiries.forms import InquiryForm
 from inquiries.notifications import notify_new_inquiry_async
 
-from .models import Property
+from .forms import SellerListingForm
+from .models import Property, PropertyImage
 
 
 def _parse_decimal(value):
@@ -24,8 +25,10 @@ def _parse_decimal(value):
 @cache_page(settings.PAGE_CACHE_SECONDS)
 @require_GET
 def property_list(request):
-    qs = Property.objects.exclude(status=Property.Status.SOLD).prefetch_related(
-        "images"
+    qs = (
+        Property.objects.filter(moderation_status=Property.ModerationStatus.APPROVED)
+        .exclude(status=Property.Status.SOLD)
+        .prefetch_related("images")
     )
 
     q = request.GET.get("q", "").strip()
@@ -82,7 +85,10 @@ def property_list(request):
 @require_http_methods(["GET", "POST"])
 def property_detail(request, slug):
     property_obj = get_object_or_404(
-        Property.objects.prefetch_related("images"), slug=slug
+        Property.objects.filter(
+            moderation_status=Property.ModerationStatus.APPROVED
+        ).prefetch_related("images"),
+        slug=slug,
     )
 
     if request.method == "POST":
@@ -101,7 +107,10 @@ def property_detail(request, slug):
         form = InquiryForm()
 
     related = (
-        Property.objects.filter(region=property_obj.region)
+        Property.objects.filter(
+            region=property_obj.region,
+            moderation_status=Property.ModerationStatus.APPROVED,
+        )
         .exclude(pk=property_obj.pk)
         .exclude(status=Property.Status.SOLD)
         .prefetch_related("images")[:3]
@@ -109,3 +118,34 @@ def property_detail(request, slug):
 
     context = {"property": property_obj, "form": form, "related": related}
     return render(request, "properties/detail.html", context)
+
+
+MAX_SELLER_PHOTOS = 10
+
+
+@require_http_methods(["GET", "POST"])
+def sell_property(request):
+    if request.method == "POST":
+        form = SellerListingForm(request.POST)
+        if form.is_valid():
+            property_obj = form.save(commit=False)
+            property_obj.listing_source = Property.ListingSource.SELLER
+            property_obj.moderation_status = Property.ModerationStatus.PENDING
+            property_obj.save()
+
+            photos = request.FILES.getlist("photos")[:MAX_SELLER_PHOTOS]
+            for order, photo in enumerate(photos):
+                PropertyImage.objects.create(
+                    property=property_obj, image=photo, order=order
+                )
+
+            messages.success(
+                request,
+                "Thanks! Your listing has been submitted for review. "
+                "Our team will reach out once it's approved and live.",
+            )
+            return redirect("properties:sell")
+    else:
+        form = SellerListingForm()
+
+    return render(request, "properties/sell.html", {"form": form})

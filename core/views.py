@@ -10,8 +10,10 @@ from properties.models import Property
 @cache_page(settings.PAGE_CACHE_SECONDS)
 @require_GET
 def home(request):
-    available = Property.objects.exclude(status=Property.Status.SOLD).prefetch_related(
-        "images"
+    available = (
+        Property.objects.filter(moderation_status=Property.ModerationStatus.APPROVED)
+        .exclude(status=Property.Status.SOLD)
+        .prefetch_related("images")
     )
     featured = list(available.filter(is_featured=True)[:6])
     recent = list(available.exclude(pk__in=[p.pk for p in featured])[:6])

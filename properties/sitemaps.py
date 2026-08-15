@@ -8,7 +8,9 @@ class PropertySitemap(Sitemap):
     priority = 0.8
 
     def items(self):
-        return Property.objects.exclude(status=Property.Status.SOLD)
+        return Property.objects.filter(
+            moderation_status=Property.ModerationStatus.APPROVED
+        ).exclude(status=Property.Status.SOLD)
 
     def lastmod(self, obj):
         return obj.updated_at

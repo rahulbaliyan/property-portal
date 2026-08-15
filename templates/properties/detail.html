@@ -4,7 +4,7 @@
 {% block title %}{{ property.title }}{% endblock %}
 {% block meta_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
 {% block og_type %}website{% endblock %}
-{% block og_title %}{{ property.title }}{% if property.price %} — &#8377;{{ property.price|floatformat:0 }}{% endif %}{% endblock %}
+{% block og_title %}{{ property.title }}{% if property.public_price %} — &#8377;{{ property.public_price|floatformat:0 }}{% endif %}{% endblock %}
 {% block og_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
 {% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.image.url }}{% else %}{{ canonical_base_url }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
 
@@ -17,10 +17,10 @@
     "description": "{{ property.description|default:property.title|escapejs }}",
     "url": "{{ canonical_base_url }}{{ request.path }}",
     {% with img=property.images.all|first %}{% if img %}"image": "{{ img.image.url }}",{% endif %}{% endwith %}
-    {% if property.price %}
+    {% if property.public_price %}
     "offers": {
       "@type": "Offer",
-      "price": "{{ property.price|floatformat:0 }}",
+      "price": "{{ property.public_price|floatformat:0 }}",
       "priceCurrency": "INR",
       "availability": "{% if property.status == 'available' %}https://schema.org/InStock{% else %}https://schema.org/LimitedAvailability{% endif %}"
     },
@@ -92,8 +92,8 @@
           <p class="text-muted mb-0"><i class="bi bi-geo-alt me-1"></i>{{ property.address|default:property.get_region_display }}, {{ property.get_region_display }}</p>
         </div>
         <div class="text-end">
-          {% if property.price %}
-            <p class="price h3 text-brand mb-0">&#8377;{{ property.price|floatformat:0 }}</p>
+          {% if property.public_price %}
+            <p class="price h3 text-brand mb-0">&#8377;{{ property.public_price|floatformat:0 }}</p>
           {% else %}
             <p class="text-muted small mb-2">Price on Request</p>
             <div class="d-flex gap-2 justify-content-end flex-wrap mb-2">
@@ -111,6 +111,9 @@
           {% endif %}
           {% if property.status != "available" %}
             <span class="badge text-bg-warning">{{ property.get_status_display }}</span>
+          {% endif %}
+          {% if property.listing_intent == "rent" %}
+            <span class="badge text-bg-light border">For Rent</span>
           {% endif %}
         </div>
       </div>

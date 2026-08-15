@@ -20,6 +20,8 @@
       {% endwith %}
       {% if property.status == "under_negotiation" %}
         <span class="badge text-bg-warning badge-status-sold">Under Negotiation</span>
+      {% elif property.listing_intent == "rent" %}
+        <span class="badge text-bg-light border badge-status-sold">For Rent</span>
       {% endif %}
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-1">
@@ -28,8 +30,8 @@
         <p class="small text-muted mb-2">
           <i class="bi bi-geo-alt me-1"></i>{{ property.get_region_display }}
         </p>
-        {% if property.price %}
-          <p class="price h5 mb-2">&#8377;{{ property.price|floatformat:0 }}</p>
+        {% if property.public_price %}
+          <p class="price h5 mb-2">&#8377;{{ property.public_price|floatformat:0 }}</p>
         {% else %}
           <p class="price h6 mb-2"><i class="bi bi-telephone-fill me-1"></i>Call for Price</p>
         {% endif %}
