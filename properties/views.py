@@ -9,7 +9,10 @@ from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET, require_http_methods
 
 from inquiries.forms import InquiryForm
-from inquiries.notifications import notify_new_inquiry_async
+from inquiries.notifications import (
+    notify_new_inquiry_async,
+    notify_new_seller_submission_async,
+)
 
 from .forms import SellerListingForm
 from .models import Property, PropertyImage
@@ -138,6 +141,8 @@ def sell_property(request):
                 PropertyImage.objects.create(
                     property=property_obj, image=photo, order=order
                 )
+
+            notify_new_seller_submission_async(property_obj)
 
             messages.success(
                 request,
