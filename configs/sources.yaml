@@ -1,0 +1,213 @@
+# Verified Uttarakhand government source registry.
+# Companion to docs/SOURCE_RESEARCH.md — every URL here was directly fetched
+# and inspected during research, not guessed or copied unverified from a
+# search snippet. See the doc for full findings, caveats, and open items.
+#
+# verification_status:
+#   verified   - fetched directly, content/ownership confirmed
+#   flagged    - domain identity confirmed via a verified sibling source,
+#                but direct fetch failed this pass (DNS/TLS/connection) —
+#                re-test before integrating
+#
+# last_verified: 2026-08-16
+
+sources:
+  - id: registration_esearch
+    name: Registration Department e-Search
+    department: Uttarakhand Registration Department (Stamp & Registration)
+    category: registration
+    url: https://online.eregistrationukgov.in/e_search/default2.aspx
+    parent_site: https://registration.uk.gov.in/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: login_required
+    captcha: true
+    captcha_stage: pre_search
+    public_search: false
+    notes: >
+      Login (username/password) required before any search form is reachable.
+      Self-registration link present but signup flow not tested. This is a
+      materially different integration shape than an open search tool.
+
+  - id: registration_evaluation
+    name: e-Valuation
+    department: Uttarakhand Registration Department
+    category: registration
+    url: https://eregistrationukgov.in/e_val/Login.aspx
+    parent_site: https://registration.uk.gov.in/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: unknown
+    captcha: unknown
+    public_search: unknown
+    notes: Confirmed genuine via outbound link from registration.uk.gov.in; not independently deep-verified beyond that.
+
+  - id: bhulekh_public_ror
+    name: Bhulekh Public ROR (Record of Rights)
+    department: Board of Revenue, Uttarakhand
+    category: revenue
+    url: https://bhulekh.uk.gov.in/public/public_ror/Public_ROR.jsp
+    parent_site: https://bhulekh.uk.gov.in/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: none
+    captcha: false
+    public_search: true
+    search_params:
+      - district
+      - tehsil
+      - village
+      - crop_year
+      - khasra_gata_number
+      - khata_number
+      - owner_name
+      - buyer_name
+      - seller_name
+      - mutation_date
+      - registry
+    data_available:
+      - ownership_record_of_rights
+      - khasra_khata_details
+      - mutation_history
+    data_limitations: >
+      Digitization completeness varies by tehsil — check "Live Tehsil Status"
+      before treating a missing record as authoritative absence.
+    notes: Strongest match found so far to the plan's Section 9 search-parameter list.
+
+  - id: forest_ukfdonline
+    name: Uttarakhand Forest Dept Single Window (tree felling / transit NOC)
+    department: Uttarakhand Forest Department
+    category: forest
+    url: https://www.ukfdonline.com/
+    parent_site: https://forest.uk.gov.in/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: login_required
+    captcha: unknown
+    public_search: false
+    notes: >
+      Application/status portal, not a standalone "check if land is forest"
+      lookup. Land recorded as "Forest" in any government record routes to
+      central Forest Conservation Act jurisdiction (see parivesh entry),
+      not this state portal.
+
+  - id: parivesh_forest_clearance
+    name: PARIVESH Forest Clearance proposal search
+    department: Ministry of Environment, Forest and Climate Change (GoI)
+    category: forest
+    url: https://cpc.parivesh.nic.in/PV_Search_Proposals.aspx
+    parent_site: https://parivesh.nic.in/
+    verification_status: flagged
+    last_verified: "2026-08-16"
+    authentication: none_for_search
+    captcha: unknown
+    public_search: true
+    notes: >
+      .nic.in domain, ownership corroborated by MoEFCC/NIC references.
+      Direct WebFetch failed with a TLS certificate-chain error this pass —
+      re-test reachability with a proper CA bundle before integrating.
+
+  - id: mdda_online
+    name: MDDA Master Plan / Zonal Plans
+    department: Mussoorie Dehradun Development Authority
+    category: planning
+    url: https://mddaonline.in/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: none
+    captcha: false
+    public_search: false
+    notes: >
+      Static master-plan/zonal-plan documents only. No plot-level (khasra)
+      zoning lookup tool found. Jurisdiction likely covers Dehradun,
+      Mussoorie, and possibly Maldevta/Sahastradhara/Thano — not confirmed
+      per-village.
+
+  - id: tcp_uk
+    name: Town & Country Planning Department Uttarakhand
+    department: Town & Country Planning Department, Uttarakhand
+    category: planning
+    url: https://tcp.uk.gov.in/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: none
+    captcha: false
+    public_search: false
+    notes: >
+      State-level master plans for Bageshwar, Chamoli, Dehradun, Nainital,
+      Pauri, Rudraprayag, Tehri, Udham Singh Nagar, Haridwar. Rishikesh and
+      Mussoorie not separately listed — jurisdiction (MDDA vs TCP vs Tehri
+      district plan) needs per-region confirmation. References a "Web GIS
+      Portal" not yet independently fetched.
+
+  - id: bor_uk
+    name: Board of Revenue Uttarakhand (portal + RCMS link)
+    department: Board of Revenue, Uttarakhand
+    category: court_revenue
+    url: https://bor.uk.gov.in/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: none
+    captcha: false
+    public_search: false
+    notes: Current canonical domain; revenue.uk.gov.in (seen in search results) failed DNS resolution this pass.
+
+  - id: rcms_revenue_court
+    name: Revenue Court Case Monitoring System (RCMS)
+    department: Board of Revenue, Uttarakhand
+    category: court_revenue
+    url: http://rcms.uk.gov.in/HOME/Index
+    parent_site: https://bor.uk.gov.in/
+    verification_status: flagged
+    last_verified: "2026-08-16"
+    authentication: unknown
+    captcha: unknown
+    public_search: unknown
+    notes: >
+      Link found on verified Board of Revenue homepage. Direct fetch failed
+      (connection refused) — re-test before relying on for
+      mutation/boundary-dispute case status.
+
+  - id: ecourts_hc_uttarakhand
+    name: Uttarakhand High Court case status
+    department: eCommittee, Supreme Court of India / NIC
+    category: court_civil
+    url: https://hcservices.ecourts.gov.in/ecourtindiaHC/index_highcourt.php?state_cd=15&dist_cd=1&stateNm=Uttarakhand
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: none
+    captcha: true
+    public_search: true
+    search_params: [case_number, party_name, advocate_name, case_type, act_type]
+
+  - id: ecourts_dcourt_dehradun
+    name: District Court Dehradun case status
+    department: eCommittee, Supreme Court of India / NIC
+    category: court_civil
+    url: https://dehradun.dcourts.gov.in/case-status-search-by-case-number/
+    verification_status: verified
+    last_verified: "2026-08-16"
+    authentication: none
+    captcha: true
+    public_search: true
+    search_params: [court_complex, case_type, case_number, year]
+    notes: >
+      Other district courts (Tehri, Rishikesh, etc.) follow the same
+      <district>.dcourts.gov.in pattern — pattern confirmed, individual
+      URLs not yet each verified.
+
+  - id: bhunaksha_uk
+    name: Bhu-Naksha (cadastral map viewer)
+    department: Board of Revenue, Uttarakhand / NIC
+    category: gis
+    url: https://bhunaksha.uk.gov.in/
+    parent_site: https://bor.uk.gov.in/
+    verification_status: flagged
+    last_verified: "2026-08-16"
+    authentication: unknown
+    captcha: unknown
+    public_search: unknown
+    notes: >
+      Domain confirmed via verified bor.uk.gov.in outbound link
+      ("Ebhunaksha") and multiple secondary sources. Direct fetch failed
+      (connection refused) — content/fields not independently inspected yet.

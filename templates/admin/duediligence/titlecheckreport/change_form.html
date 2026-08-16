@@ -1,0 +1,46 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script>
+    window.DUEDILIGENCE_URLS = {
+      districts: "{% url 'admin:duediligence_titlecheckreport_ajax_districts' %}",
+      tehsils: "{% url 'admin:duediligence_titlecheckreport_ajax_tehsils' %}",
+      villages: "{% url 'admin:duediligence_titlecheckreport_ajax_villages' %}"
+    };
+  </script>
+  <script src="{% static 'duediligence/admin_lookup.js' %}" defer></script>
+{% endblock %}
+
+{% block after_related_objects %}
+  {{ block.super }}
+  {% if change %}
+    <div class="submit-row">
+      {% if original.deed_pdf %}
+        <form method="post" action="{% url 'admin:duediligence_titlecheckreport_extract_ai' original.pk %}">
+          {% csrf_token %}
+          <input type="submit" value="Extract with AI" class="default">
+        </form>
+      {% endif %}
+      <form method="post" action="{% url 'admin:duediligence_titlecheckreport_run_check' original.pk %}">
+        {% csrf_token %}
+        <input type="submit" value="Run Bhulekh Check" class="default">
+      </form>
+      {% if original.status != "draft" %}
+        <a class="button" href="{% url 'admin:duediligence_titlecheckreport_report' original.pk %}">
+          View Report
+        </a>
+      {% endif %}
+    </div>
+    <p class="help">
+      Save any changes below first — both actions use the fields, khasra
+      rows, and deed PDF as currently saved, not unsaved edits on this page.
+      "Extract with AI" pre-fills deed fields and adds any Khasra rows it
+      finds — always review before running the Bhulekh check, and read
+      the raw extraction response if anything looks off.
+    </p>
+  {% else %}
+    <p class="help">Save this report first — optionally with a deed PDF attached — to unlock "Extract with AI" and "Run Bhulekh Check".</p>
+  {% endif %}
+{% endblock %}

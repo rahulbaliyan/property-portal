@@ -1,0 +1,36 @@
+{% regroup manual_sources by category as category_list %}
+<h2>Not automated — check manually</h2>
+<p class="help">
+  This report only cross-checks the Revenue/Bhulekh record. These other
+  verified government sources are not automated and should be checked by
+  hand before treating a title as clear.
+</p>
+{% for category in category_list %}
+  <h3>{{ category.grouper|title }}</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Department</th>
+        <th>Status</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for source in category.list %}
+        <tr>
+          <td><a href="{{ source.url }}" target="_blank" rel="noopener">{{ source.name }}</a></td>
+          <td>{{ source.department }}</td>
+          <td>
+            {% if source.verification_status == "verified" %}
+              <span style="color:#1f8a4c;font-weight:600;">Verified</span>
+            {% else %}
+              <span style="color:#c9962e;font-weight:600;">Flagged — re-verify</span>
+            {% endif %}
+          </td>
+          <td>{{ source.notes|default:"" }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endfor %}

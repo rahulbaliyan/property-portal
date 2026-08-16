@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "core",
     "properties",
     "inquiries",
+    "duediligence",
 ]
 
 MIDDLEWARE = [
@@ -176,3 +177,18 @@ WHATSAPP_NOTIFY_TEMPLATE = env("WHATSAPP_NOTIFY_TEMPLATE", default="new_inquiry"
 # blank explicitly to notify only one number.
 WHATSAPP_ADMIN_NUMBER = env("WHATSAPP_ADMIN_NUMBER", default=WHATSAPP_NUMBER)
 WHATSAPP_ADMIN_NUMBER_2 = env("WHATSAPP_ADMIN_NUMBER_2", default=WHATSAPP_NUMBER_2)
+
+# AI-assisted deed extraction (duediligence app). LangChain abstracts the
+# actual model behind these two settings, so switching provider is a config
+# change, not a code change — see duediligence/deed_ai.py.
+# AI_EXTRACTION_PROVIDER: "anthropic", "openai", or "google". Google
+# (Gemini) is the default based on a real side-by-side test on a scanned
+# Hindi-script deed, where it correctly read every field while GPT-4o
+# hallucinated khasra numbers and misread the area — see duediligence/deed_ai.py.
+AI_EXTRACTION_PROVIDER = env("AI_EXTRACTION_PROVIDER", default="google")
+# From console.anthropic.com -> API Keys.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# From platform.openai.com -> API keys.
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+# From aistudio.google.com -> Get API key.
+GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="")

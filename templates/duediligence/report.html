@@ -1,0 +1,138 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Title Check Report #{{ report.pk }}{% endblock %}
+
+{% block content %}
+<h1>
+  Title Check Report #{{ report.pk }}
+  {% if report.risk_level == "green" %}
+    <span style="color:#1f8a4c;">{{ report.get_risk_level_display }}</span>
+  {% elif report.risk_level == "yellow" %}
+    <span style="color:#c9962e;">{{ report.get_risk_level_display }}</span>
+  {% elif report.risk_level == "orange" %}
+    <span style="color:#d9730d;">{{ report.get_risk_level_display }}</span>
+  {% elif report.risk_level == "red" %}
+    <span style="color:#b3261e;">{{ report.get_risk_level_display }}</span>
+  {% else %}
+    <span style="color:#555;">{{ report.get_risk_level_display }}</span>
+  {% endif %}
+</h1>
+
+<p>
+  <strong>Reflects the Bhulekh Revenue record only — not a complete title verification.</strong>
+  See the manual checklist below for everything else that still needs checking.
+</p>
+
+<p>
+  {% if report.property %}
+    Linked listing: <a href="{% url 'admin:properties_property_change' report.property.pk %}">{{ report.property.title }}</a>
+  {% else %}
+    Not linked to a listing.
+  {% endif %}
+  &middot;
+  <a href="{% url 'admin:duediligence_titlecheckreport_change' report.pk %}">Edit this report</a>
+</p>
+
+<h2>Deed as entered</h2>
+<table>
+  <tr><th>Seller</th><td>{{ report.seller_name|default:"—" }}</td></tr>
+  <tr><th>Buyer</th><td>{{ report.buyer_name|default:"—" }}</td></tr>
+  <tr><th>Deed date</th><td>{{ report.deed_date|default:"—" }}</td></tr>
+  <tr><th>Consideration</th><td>{{ report.consideration_amount|default:"—" }}</td></tr>
+  <tr><th>Declared area</th><td>{{ report.deed_area_value|default:"—" }} {{ report.get_deed_area_unit_display }}</td></tr>
+  <tr><th>Registration No. / Book / Vol / Page</th>
+      <td>{{ report.registration_number|default:"—" }} / {{ report.book_number|default:"—" }} / {{ report.volume_number|default:"—" }} / {{ report.page_number|default:"—" }}</td></tr>
+  <tr><th>Location</th>
+      <td>{{ report.village_name }}, {{ report.tehsil_name }}, {{ report.district_name }} (Pargana {{ report.pargana_name }})</td></tr>
+  {% if report.deed_pdf %}
+    <tr><th>Deed PDF</th><td><a href="{{ report.deed_pdf.url }}" target="_blank" rel="noopener">Download</a></td></tr>
+  {% endif %}
+</table>
+
+<h2>Per-khasra results</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Khasra</th>
+      <th>Lookup</th>
+      <th>Matched Khata</th>
+      <th>Latest Mutation</th>
+      <th>Area</th>
+      <th>Seller</th>
+      <th>Buyer</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for entry in khasra_entries %}
+      <tr>
+        <td>{{ entry.khasra_number }}</td>
+        <td>{{ entry.get_lookup_status_display }}</td>
+        <td>{{ entry.matched_khata_number|default:"—" }}</td>
+        <td>
+          {% if entry.latest_mutation_case_number %}
+            Case {{ entry.latest_mutation_case_number }} ({{ entry.latest_mutation_order_date|default:"—" }})<br>
+            {{ entry.latest_mutation_seller_name }} &rarr; {{ entry.latest_mutation_buyer_name }}<br>
+            Deed: {{ entry.latest_mutation_deed_amount_text|default:"—" }} on {{ entry.latest_mutation_deed_date|default:"—" }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
+          {% if entry.area_match is True %}&#10003;
+          {% elif entry.area_match is False %}&#10007;
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if entry.seller_match is True %}&#10003;
+          {% elif entry.seller_match is False %}&#10007;
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if entry.buyer_match is True %}&#10003;
+          {% elif entry.buyer_match is False %}&#10007;
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Flagged for human review</h2>
+{% if litigation_entries %}
+  <p class="help">
+    These mutation-history entries contain litigation-related language.
+    They are surfaced for review, not auto-classified as a problem — read
+    the excerpt before drawing a conclusion.
+  </p>
+  {% for entry in litigation_entries %}
+    <div style="border-left:3px solid #c9962e; padding-left:10px; margin-bottom:10px;">
+      <strong>Keywords:</strong> {{ entry.matched_litigation_keywords }}<br>
+      <strong>Case:</strong> {{ entry.case_number|default:"—" }} ({{ entry.order_date|default:"—" }})
+      <pre style="white-space:pre-wrap;">{{ entry.raw_text }}</pre>
+    </div>
+  {% endfor %}
+{% else %}
+  <p>No litigation-related language matched in any fetched mutation record.</p>
+{% endif %}
+
+<h2>Raw report text (audit trail)</h2>
+{% for lookup in report.khata_lookups.all %}
+  <details>
+    <summary>Khata {{ lookup.khata_number }} — fetched {{ lookup.fetched_at }} ({{ lookup.get_fetch_status_display }})</summary>
+    {% if lookup.fetch_error_message %}
+      <p style="color:#b3261e;">{{ lookup.fetch_error_message }}</p>
+    {% endif %}
+    <pre style="white-space:pre-wrap; max-height:300px; overflow:auto;">{{ lookup.raw_report_html }}</pre>
+  </details>
+{% empty %}
+  <p>No khata fetches recorded yet — run the check first.</p>
+{% endfor %}
+
+{% include "duediligence/_manual_checklist.html" %}
+
+<hr>
+<p class="help">
+  This risk level reflects the Uttarakhand Bhulekh Revenue record only.
+  It is not a complete title verification.
+</p>
+{% endblock %}
