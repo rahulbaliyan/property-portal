@@ -75,7 +75,8 @@ def new_session() -> requests.Session:
         response.raise_for_status()
     except requests.RequestException as exc:
         raise BhulekhSessionError(
-            "Could not establish a session with the Bhulekh portal."
+            f"Could not establish a session with the Bhulekh portal: "
+            f"{exc.__class__.__name__}: {exc}"
         ) from exc
     return session
 
@@ -86,7 +87,8 @@ def _post_json(session: requests.Session, url: str, data: dict) -> list | dict:
         response.raise_for_status()
     except requests.RequestException as exc:
         raise BhulekhRequestError(
-            f"Request to Bhulekh failed: {data.get('act', url)}"
+            f"Request to Bhulekh failed ({data.get('act', url)}): "
+            f"{exc.__class__.__name__}: {exc}"
         ) from exc
     try:
         return response.json()
@@ -228,6 +230,7 @@ def fetch_khata_report_html(
         response.raise_for_status()
     except requests.RequestException as exc:
         raise BhulekhRequestError(
-            f"Fetching the ROR report for khata {khata_number} failed."
+            f"Fetching the ROR report for khata {khata_number} failed: "
+            f"{exc.__class__.__name__}: {exc}"
         ) from exc
     return response.text
