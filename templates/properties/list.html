@@ -8,7 +8,7 @@
 
   <form method="get" class="filter-bar p-3 mb-4">
     <div class="row g-2 align-items-end">
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label small text-muted mb-1" for="q">Search</label>
         <input type="text" class="form-control" id="q" name="q" value="{{ filters.q }}" placeholder="Title, area, locality…">
       </div>
@@ -27,6 +27,15 @@
           <option value="">Any</option>
           {% for value, label in property_types %}
             <option value="{{ value }}" {% if filters.property_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="listing_intent">Status</label>
+        <select class="form-select" id="listing_intent" name="listing_intent">
+          <option value="">Buy or Rent</option>
+          {% for value, label in listing_intents %}
+            <option value="{{ value }}" {% if filters.listing_intent == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>

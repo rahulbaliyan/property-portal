@@ -37,6 +37,7 @@ def property_list(request):
     q = request.GET.get("q", "").strip()
     region = request.GET.get("region", "")
     property_type = request.GET.get("property_type", "")
+    listing_intent = request.GET.get("listing_intent", "")
     min_price_raw = request.GET.get("min_price", "").strip()
     max_price_raw = request.GET.get("max_price", "").strip()
     sort = request.GET.get("sort", "newest")
@@ -51,6 +52,8 @@ def property_list(request):
         qs = qs.filter(region=region)
     if property_type in Property.PropertyType.values:
         qs = qs.filter(property_type=property_type)
+    if listing_intent in Property.ListingIntent.values:
+        qs = qs.filter(listing_intent=listing_intent)
 
     min_price = _parse_decimal(min_price_raw)
     if min_price is not None:
@@ -73,10 +76,12 @@ def property_list(request):
         "page_obj": page_obj,
         "regions": Property.Region.choices,
         "property_types": Property.PropertyType.choices,
+        "listing_intents": Property.ListingIntent.choices,
         "filters": {
             "q": q,
             "region": region,
             "property_type": property_type,
+            "listing_intent": listing_intent,
             "min_price": min_price_raw,
             "max_price": max_price_raw,
             "sort": sort,

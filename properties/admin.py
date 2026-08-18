@@ -1,7 +1,31 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Property, PropertyImage, PropertyVideo
+from .models import Location, Property, PropertyImage, PropertyVideo
+
+
+@admin.register(Location)
+class LocationAdmin(admin.ModelAdmin):
+    list_display = ("get_region_display", "content_status")
+    fields = ("region", "description", "image")
+
+    @admin.display(description="Region")
+    def get_region_display(self, obj):
+        return obj.get_region_display()
+
+    @admin.display(description="Content")
+    def content_status(self, obj):
+        missing = []
+        if not obj.description:
+            missing.append("description")
+        if not obj.image:
+            missing.append("image")
+        if not missing:
+            return format_html('<span style="color:#1f8a4c;font-weight:600;">Complete</span>')
+        return format_html(
+            '<span style="color:#c9962e;font-weight:600;">Missing {}</span>',
+            " & ".join(missing),
+        )
 
 
 class PropertyImageInline(admin.TabularInline):

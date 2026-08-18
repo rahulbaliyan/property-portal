@@ -159,6 +159,53 @@ class Property(models.Model):
         return f"Hi, I'm interested in {self.title} - please share the price"
 
 
+class Location(models.Model):
+    """Editorial content for a region's landing page (and the homepage's
+    locations section) — kept out of templates so it's admin-editable
+    without a code deploy. One row per Property.Region value; region
+    itself isn't a separate enum here to avoid the two drifting apart."""
+
+    region = models.CharField(
+        max_length=20, choices=Property.Region.choices, unique=True
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Shown on the homepage locations section and this region's "
+        "landing page. Leave blank until real copy is ready — the region "
+        "still appears, just without a description.",
+    )
+    image = models.ImageField(
+        upload_to="locations/",
+        null=True,
+        blank=True,
+        help_text="Leave blank until a real photograph is available — falls "
+        "back to a plain placeholder rather than a stock image.",
+    )
+
+    class Meta:
+        ordering = ["region"]
+
+    def __str__(self):
+        return self.get_region_display()
+
+    def optimized_image_url(self):
+        """Mirrors PropertyVideo's optimized_url()/thumbnail_url() pattern
+        — Cloudinary's quality=auto,fetch_format=auto on the way in, so
+        this field doesn't repeat PropertyImage's existing gap (raw,
+        untransformed URLs) from day one. No-op locally."""
+        if not self.image:
+            return ""
+        if settings.STORAGES["default"]["BACKEND"] != CLOUDINARY_IMAGE_BACKEND:
+            return self.image.url
+
+        import cloudinary
+
+        url, _ = cloudinary.utils.cloudinary_url(
+            self.image.name, quality="auto", fetch_format="auto", secure=True
+        )
+        return url
+
+
 class PropertyImage(models.Model):
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, related_name="images"

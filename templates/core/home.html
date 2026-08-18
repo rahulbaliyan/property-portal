@@ -6,20 +6,29 @@
 {% block content %}
 <section class="hero">
   <div class="container text-center">
-    <h1 class="display-5">Find your place in the hills</h1>
-    <p class="lead col-lg-8 mx-auto">Plots, flats and villas for sale in Maldevta, Dehradun, Dhanaulti and Mussoorie.</p>
+    <p class="hero-eyebrow mb-2">Shiv Shakti Developers</p>
+    <h1 class="display-5">Find Your Place in Uttarakhand</h1>
+    <p class="lead col-lg-8 mx-auto mb-4">Discover thoughtfully selected plots, land, villas and homes across Dehradun and the hills.</p>
+    <div class="d-flex flex-column flex-sm-row justify-content-center gap-2">
+      <a href="{% url 'properties:list' %}" class="btn btn-brand btn-lg px-4">Explore Properties</a>
+      {% if settings_whatsapp_number %}
+        <a href="https://wa.me/{{ settings_whatsapp_number }}" target="_blank" rel="noopener" class="btn btn-outline-light btn-lg px-4">Talk to Us</a>
+      {% else %}
+        <a href="tel:{{ contact_phone_1|cut:' ' }}" class="btn btn-outline-light btn-lg px-4">Talk to Us</a>
+      {% endif %}
+    </div>
   </div>
 </section>
 
 <div class="container">
   <div class="card search-card p-3 p-md-4">
     <form action="{% url 'properties:list' %}" method="get" class="row g-2 align-items-end">
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label small text-muted mb-1" for="q">Search</label>
         <input type="text" class="form-control" id="q" name="q" placeholder="Title, area, locality…">
       </div>
-      <div class="col-6 col-md-3">
-        <label class="form-label small text-muted mb-1" for="region">Region</label>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="region">Location</label>
         <select class="form-select" id="region" name="region">
           <option value="">Any region</option>
           {% for value, label in regions %}
@@ -27,7 +36,7 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
         <label class="form-label small text-muted mb-1" for="property_type">Type</label>
         <select class="form-select" id="property_type" name="property_type">
           <option value="">Any type</option>
@@ -35,6 +44,19 @@
             <option value="{{ value }}">{{ label }}</option>
           {% endfor %}
         </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="listing_intent">Status</label>
+        <select class="form-select" id="listing_intent" name="listing_intent">
+          <option value="">Buy or Rent</option>
+          {% for value, label in listing_intents %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-1">
+        <label class="form-label small text-muted mb-1" for="max_price">Budget</label>
+        <input type="number" class="form-control" id="max_price" name="max_price" placeholder="Max ₹">
       </div>
       <div class="col-md-2 d-grid">
         <button type="submit" class="btn btn-brand">
@@ -45,6 +67,26 @@
   </div>
 </div>
 
+<div class="container mt-5">
+  <div class="row g-3 g-md-4 trust-strip">
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-patch-check-fill"></i>
+      <span>Verification Assistance</span>
+    </div>
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-geo-alt-fill"></i>
+      <span>Local Expertise</span>
+    </div>
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-signpost-split-fill"></i>
+      <span>Site Visit Assistance</span>
+    </div>
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-file-earmark-check-fill"></i>
+      <span>Transaction Support</span>
+    </div>
+  </div>
+</div>
 
 <div class="container mt-5">
   <div class="trust-stats row g-4 text-center py-4 py-md-5 mx-0">
@@ -147,5 +189,76 @@
       <p class="mt-3 text-muted">No listings yet — check back soon, or log into the admin to add the first one.</p>
     </div>
   {% endif %}
+</div>
+
+<div class="container my-5">
+  <h2 class="h4 section-title mb-2">Explore Uttarakhand</h2>
+  <p class="text-muted mb-4">Every region we work in, and what's currently available in each.</p>
+  <div class="row g-4">
+    {% for location in locations %}
+      <div class="col-sm-6 col-lg-3">
+        <a href="{% url 'properties:list' %}?region={{ location.region }}" class="location-card d-block h-100 text-decoration-none">
+          <div class="location-card-media">
+            {% if location.image %}
+              <img src="{{ location.optimized_image_url }}" alt="{{ location.get_region_display }}" loading="lazy">
+            {% else %}
+              <i class="bi bi-geo-alt"></i>
+            {% endif %}
+          </div>
+          <div class="location-card-body">
+            <h3 class="h6 mb-1">{{ location.get_region_display }}</h3>
+            {% if location.description %}
+              <p class="small text-muted mb-2">{{ location.description|truncatewords:16 }}</p>
+            {% endif %}
+            <span class="small fw-semibold text-brand">
+              {% if location.listing_count %}{{ location.listing_count }} listing{{ location.listing_count|pluralize }}{% else %}Explore{% endif %}
+              <i class="bi bi-arrow-right ms-1"></i>
+            </span>
+          </div>
+        </a>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="container my-5">
+  <div class="why-us row align-items-center g-5">
+    <div class="col-lg-5">
+      <h2 class="why-us-heading">Property Decisions Deserve More Than a Listing.</h2>
+      <p class="text-muted">We help you through the entire property journey — not just the search.</p>
+    </div>
+    <div class="col-lg-7">
+      <div class="row g-4">
+        <div class="col-sm-6 why-pillar">
+          <span class="why-pillar-num">01</span>
+          <h3 class="h6">Local Expertise</h3>
+          <p class="small text-muted mb-0">Deep, on-the-ground knowledge of Dehradun and the surrounding hill regions.</p>
+        </div>
+        <div class="col-sm-6 why-pillar">
+          <span class="why-pillar-num">02</span>
+          <h3 class="h6">Property Guidance</h3>
+          <p class="small text-muted mb-0">Honest advice on location, land type and investment potential, not just a listing.</p>
+        </div>
+        <div class="col-sm-6 why-pillar">
+          <span class="why-pillar-num">03</span>
+          <h3 class="h6">Transaction Assistance</h3>
+          <p class="small text-muted mb-0">Support from site visit through registry, so the process stays smooth end to end.</p>
+        </div>
+        <div class="col-sm-6 why-pillar">
+          <span class="why-pillar-num">04</span>
+          <h3 class="h6">Long-Term Trust</h3>
+          <p class="small text-muted mb-0">We're here after the deal closes too — not a one-time transaction.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sell-cta">
+  <div class="container text-center">
+    <h2 class="h3 mb-2">Have a Property to Sell?</h2>
+    <p class="mb-4">Tell us about your property and our team will get in touch.</p>
+    <a href="{% url 'properties:sell' %}" class="btn btn-brand btn-lg px-4">Sell Your Property</a>
+  </div>
 </div>
 {% endblock %}
