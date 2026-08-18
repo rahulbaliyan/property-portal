@@ -1,14 +1,63 @@
 :root {
-  --brand: #16233f;
-  --brand-dark-solid: #0b1526;
-  --accent: #c9962e;
-  --accent-light: #e0b354;
-  --bg-soft: #f8f6f0;
+  /* Palette — Modern Uttarakhand Luxury: forest green, warm ivory, bronze accent used sparingly */
+  --forest: #163a2d;       /* primary */
+  --forest-deep: #0e251c;  /* darker anchor — hero gradient, high-contrast dark states */
+  --pine: #28513e;         /* secondary — reserved for later phases (section backgrounds, secondary emphasis) */
+  --ivory: #f7f5ef;        /* page background */
+  --white: #ffffff;        /* card/surface background */
+  --ink: #171a18;          /* primary text */
+  --slate: #626862;        /* secondary text */
+  --bronze: #b18a4a;       /* accent — use sparingly, never as a dominant fill */
+  --bronze-light: #c7a367; /* accent hover state */
+  --border: #e5e1d8;       /* hairline borders */
+
+  /* Legacy names kept stable so existing template classes (.text-brand,
+     .btn-brand, .bg-soft, etc.) don't need to change across every
+     template — only what they resolve to does. New code should prefer
+     the palette tokens above directly. */
+  --brand: var(--forest);
+  --brand-dark-solid: var(--forest-deep);
+  --accent: var(--bronze);
+  --accent-light: var(--bronze-light);
+  --bg-soft: var(--ivory);
+
+  /* Typography — premium serif for headings, quiet sans for everything
+     else. System stacks only for now (zero load cost / no LCP risk);
+     revisit with an embedded webfont in the performance phase if the
+     system stack still feels insufficiently distinctive once live. */
+  --font-serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Spacing — 8px base scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  /* Radius — minimal, per brand direction */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  /* Shadow — two elevations only: a hairline border for resting state,
+     one soft shadow for hover/elevated state. Replaces three near-
+     duplicate ad hoc shadow values previously scattered per rule. */
+  --shadow-resting: 0 1px 2px rgba(23, 26, 24, 0.06);
+  --shadow-elevated: 0 8px 24px rgba(23, 26, 24, 0.08);
 }
 
 body {
-  background-color: #fff;
-  color: #22282c;
+  background-color: var(--ivory);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-serif);
 }
 
 .text-brand { color: var(--brand); }
@@ -34,14 +83,14 @@ body {
 }
 .btn-outline-brand:hover {
   background-color: var(--brand);
-  color: #fff;
+  color: var(--white);
 }
 
 .footer-link {
   color: #c8cdd0;
   text-decoration: none;
 }
-.footer-link:hover { color: #fff; }
+.footer-link:hover { color: var(--white); }
 
 /* Brand */
 .navbar-brand {
@@ -55,13 +104,13 @@ body {
   font-size: 0.68rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #8a8f98;
+  color: var(--slate);
 }
 
 /* Hero */
 .hero {
   background: linear-gradient(135deg, var(--brand-dark-solid), var(--brand));
-  color: #fff;
+  color: var(--white);
   padding: 4.5rem 0 6.5rem;
 }
 .hero h1 { font-weight: 700; }
@@ -69,22 +118,22 @@ body {
 
 .search-card {
   margin-top: -4rem;
-  border-radius: 1rem;
-  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
   border: none;
 }
 
 /* Property cards */
 .property-card {
-  border: 1px solid #eceae5;
-  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   overflow: hidden;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   height: 100%;
 }
 .property-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-elevated);
 }
 .property-card .card-img-wrap {
   position: relative;
@@ -105,8 +154,8 @@ body {
   width: 3rem;
   height: 3rem;
   border-radius: 50%;
-  background-color: rgba(22, 35, 63, 0.75);
-  color: #fff;
+  background-color: rgba(22, 58, 45, 0.75);
+  color: var(--white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,31 +182,31 @@ body {
 .gallery-main {
   aspect-ratio: 16 / 10;
   background-color: var(--bg-soft);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .gallery-main img { width: 100%; height: 100%; object-fit: cover; }
 
 .spec-pill {
   background-color: var(--bg-soft);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   padding: 0.75rem 1rem;
 }
 
-#map { height: 320px; border-radius: 0.75rem; border: 0; }
+#map { height: 320px; border-radius: var(--radius-md); border: 0; }
 
 .sticky-inquiry { position: sticky; top: 5.5rem; }
 
 /* Filter bar */
 .filter-bar {
   background-color: var(--bg-soft);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
 }
 
 /* Trust stats strip */
 .trust-stats {
   background-color: var(--bg-soft);
-  border-radius: 1rem;
+  border-radius: var(--radius-md);
 }
 .trust-stat .stat-number {
   font-weight: 800;
@@ -168,14 +217,14 @@ body {
 
 /* Services */
 .service-card {
-  background-color: #fff;
-  border: 1px solid #eceae5;
-  border-radius: 0.75rem;
+  background-color: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .service-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-elevated);
   border-color: var(--accent);
 }
 .service-card .service-icon {
@@ -192,8 +241,8 @@ body {
 /* Sell Your Property */
 .sell-trust-strip {
   background-color: var(--bg-soft);
-  border-radius: 1rem;
+  border-radius: var(--radius-md);
 }
 .sell-form-card {
-  border-radius: 1rem;
+  border-radius: var(--radius-md);
 }
