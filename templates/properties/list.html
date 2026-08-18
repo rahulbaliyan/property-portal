@@ -4,62 +4,85 @@
 
 {% block content %}
 <div class="container py-4">
-  <h1 class="h3 section-title mb-4">All Listings</h1>
+  <h1 class="h3 section-title mb-1">Find Your Property</h1>
+  <p class="text-muted mb-4">Search plots, land, villas and homes across Dehradun and Uttarakhand.</p>
 
-  <form method="get" class="filter-bar p-3 mb-4">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-2">
-        <label class="form-label small text-muted mb-1" for="q">Search</label>
-        <input type="text" class="form-control" id="q" name="q" value="{{ filters.q }}" placeholder="Title, area, locality…">
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label small text-muted mb-1" for="region">Region</label>
-        <select class="form-select" id="region" name="region">
-          <option value="">Any</option>
-          {% for value, label in regions %}
-            <option value="{{ value }}" {% if filters.region == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label small text-muted mb-1" for="property_type">Type</label>
-        <select class="form-select" id="property_type" name="property_type">
-          <option value="">Any</option>
-          {% for value, label in property_types %}
-            <option value="{{ value }}" {% if filters.property_type == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label small text-muted mb-1" for="listing_intent">Status</label>
-        <select class="form-select" id="listing_intent" name="listing_intent">
-          <option value="">Buy or Rent</option>
-          {% for value, label in listing_intents %}
-            <option value="{{ value }}" {% if filters.listing_intent == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-6 col-md-1">
-        <label class="form-label small text-muted mb-1" for="min_price">Min &#8377;</label>
-        <input type="number" min="0" class="form-control" id="min_price" name="min_price" value="{{ filters.min_price }}">
-      </div>
-      <div class="col-6 col-md-1">
-        <label class="form-label small text-muted mb-1" for="max_price">Max &#8377;</label>
-        <input type="number" min="0" class="form-control" id="max_price" name="max_price" value="{{ filters.max_price }}">
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label small text-muted mb-1" for="sort">Sort by</label>
-        <select class="form-select" id="sort" name="sort">
-          <option value="newest" {% if filters.sort == "newest" %}selected{% endif %}>Newest first</option>
-          <option value="price_asc" {% if filters.sort == "price_asc" %}selected{% endif %}>Price: Low to High</option>
-          <option value="price_desc" {% if filters.sort == "price_desc" %}selected{% endif %}>Price: High to Low</option>
-        </select>
-      </div>
-      <div class="col-6 col-md-1 d-grid">
-        <button type="submit" class="btn btn-brand"><i class="bi bi-funnel"></i></button>
-      </div>
+  <button type="button" class="btn btn-outline-brand d-lg-none mb-3" data-bs-toggle="offcanvas" data-bs-target="#filterOffcanvas" aria-controls="filterOffcanvas">
+    <i class="bi bi-sliders me-1"></i>Filters
+  </button>
+
+  <div class="offcanvas offcanvas-bottom offcanvas-lg filter-offcanvas" tabindex="-1" id="filterOffcanvas" aria-labelledby="filterOffcanvasLabel">
+    <div class="offcanvas-header d-lg-none">
+      <h2 class="offcanvas-title h6 mb-0" id="filterOffcanvasLabel">Filters</h2>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
-  </form>
+    <div class="offcanvas-body">
+      <form method="get" class="filter-bar p-lg-3 mb-lg-4">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-2">
+            <label class="form-label small text-muted mb-1" for="q">Search</label>
+            <input type="text" class="form-control" id="q" name="q" value="{{ filters.q }}" placeholder="Title, area, locality…">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="region">Region</label>
+            <select class="form-select" id="region" name="region">
+              <option value="">Any</option>
+              {% for value, label in regions %}
+                <option value="{{ value }}" {% if filters.region == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="property_type">Type</label>
+            <select class="form-select" id="property_type" name="property_type">
+              <option value="">Any</option>
+              {% for value, label in property_types %}
+                <option value="{{ value }}" {% if filters.property_type == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="listing_intent">Status</label>
+            <select class="form-select" id="listing_intent" name="listing_intent">
+              <option value="">Buy or Rent</option>
+              {% for value, label in listing_intents %}
+                <option value="{{ value }}" {% if filters.listing_intent == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="bedrooms">Bedrooms</label>
+            <select class="form-select" id="bedrooms" name="bedrooms">
+              <option value="">Any</option>
+              {% for value in bedroom_options %}
+                <option value="{{ value }}" {% if filters.bedrooms == value|stringformat:"s" %}selected{% endif %}>{{ value }} BHK</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="sort">Sort by</label>
+            <select class="form-select" id="sort" name="sort">
+              <option value="newest" {% if filters.sort == "newest" %}selected{% endif %}>Newest first</option>
+              <option value="featured" {% if filters.sort == "featured" %}selected{% endif %}>Featured</option>
+              <option value="price_asc" {% if filters.sort == "price_asc" %}selected{% endif %}>Price: Low to High</option>
+              <option value="price_desc" {% if filters.sort == "price_desc" %}selected{% endif %}>Price: High to Low</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="min_price">Min &#8377;</label>
+            <input type="number" min="0" class="form-control" id="min_price" name="min_price" value="{{ filters.min_price }}">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="max_price">Max &#8377;</label>
+            <input type="number" min="0" class="form-control" id="max_price" name="max_price" value="{{ filters.max_price }}">
+          </div>
+          <div class="col-12 col-md-2 d-grid">
+            <button type="submit" class="btn btn-brand"><i class="bi bi-funnel me-1"></i>Apply</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 
   {% if page_obj.object_list %}
     <p class="text-muted small">{{ page_obj.paginator.count }} propert{{ page_obj.paginator.count|pluralize:"y,ies" }} found</p>

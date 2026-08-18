@@ -38,6 +38,7 @@ def property_list(request):
     region = request.GET.get("region", "")
     property_type = request.GET.get("property_type", "")
     listing_intent = request.GET.get("listing_intent", "")
+    bedrooms_raw = request.GET.get("bedrooms", "").strip()
     min_price_raw = request.GET.get("min_price", "").strip()
     max_price_raw = request.GET.get("max_price", "").strip()
     sort = request.GET.get("sort", "newest")
@@ -55,6 +56,16 @@ def property_list(request):
     if listing_intent in Property.ListingIntent.values:
         qs = qs.filter(listing_intent=listing_intent)
 
+    # "4" means exactly 4, "4+" means 4 or more — matches how bedroom
+    # counts are conventionally searched (a 5BHK buyer still wants to
+    # see it under a "4+" filter, not just literal 4BHK listings).
+    if bedrooms_raw.rstrip("+").isdigit():
+        bedrooms = int(bedrooms_raw.rstrip("+"))
+        if bedrooms_raw.endswith("+"):
+            qs = qs.filter(bedrooms__gte=bedrooms)
+        else:
+            qs = qs.filter(bedrooms=bedrooms)
+
     min_price = _parse_decimal(min_price_raw)
     if min_price is not None:
         qs = qs.filter(price__gte=min_price)
@@ -66,8 +77,10 @@ def property_list(request):
         "price_asc": "price",
         "price_desc": "-price",
         "newest": "-created_at",
+        "featured": "-is_featured",
     }
-    qs = qs.order_by(sort_map.get(sort, "-created_at"))
+    order = sort_map.get(sort, "-created_at")
+    qs = qs.order_by(order, "-created_at") if order != "-created_at" else qs.order_by(order)
 
     paginator = Paginator(qs, 12)
     page_obj = paginator.get_page(request.GET.get("page"))
@@ -77,11 +90,13 @@ def property_list(request):
         "regions": Property.Region.choices,
         "property_types": Property.PropertyType.choices,
         "listing_intents": Property.ListingIntent.choices,
+        "bedroom_options": [1, 2, 3, "4+"],
         "filters": {
             "q": q,
             "region": region,
             "property_type": property_type,
             "listing_intent": listing_intent,
+            "bedrooms": bedrooms_raw,
             "min_price": min_price_raw,
             "max_price": max_price_raw,
             "sort": sort,

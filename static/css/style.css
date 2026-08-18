@@ -171,6 +171,18 @@ h1, h2, h3 {
   top: 0.75rem;
   right: 0.75rem;
 }
+.property-card-media-link { display: block; }
+.property-card .card-body { position: relative; }
+.property-card-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin-bottom: 0.35rem;
+}
+.property-card-eyebrow i { font-size: 0.5rem; margin-right: 0.4rem; vertical-align: middle; }
+.property-card-specs { line-height: 1.4; }
 
 .section-title {
   font-weight: 700;
@@ -197,11 +209,16 @@ h1, h2, h3 {
 
 .sticky-inquiry { position: sticky; top: 5.5rem; }
 
-/* Filter bar */
+/* Filter bar — a Bootstrap responsive offcanvas: a real bottom-sheet
+   drawer below the lg breakpoint, a normal inline block above it. */
 .filter-bar {
   background-color: var(--bg-soft);
   border-radius: var(--radius-md);
 }
+@media (min-width: 992px) {
+  .filter-offcanvas .offcanvas-body { padding: 0; }
+}
+.filter-offcanvas .offcanvas-body { max-height: 70vh; overflow-y: auto; }
 
 /* Trust stats strip */
 .trust-stats {
