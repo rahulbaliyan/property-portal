@@ -1,7 +1,10 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Sell Your Property{% endblock %}
 {% block meta_description %}List your plot, flat, villa or house with {{ site_name }}. Free to submit, reviewed by our team, and your contact details stay private.{% endblock %}
+{% block og_title %}List Your Property — {{ site_name }}{% endblock %}
+{% block og_description %}Free to submit, reviewed by our team, and your contact details stay private.{% endblock %}
 
 {% block content %}
 <section class="hero">
@@ -115,6 +118,7 @@
             <p class="text-muted small mb-3">Upload a few clear photos — up to 10. Not required to submit, but listings with photos get reviewed faster.</p>
             <div class="mb-4">
               <input type="file" name="photos" id="photos" class="form-control" accept="image/*" multiple>
+              <div id="photoPreview" class="photo-preview mt-2"></div>
             </div>
 
             <h2 class="h5 section-title mb-2">Your Contact Information</h2>
@@ -146,4 +150,8 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{% static 'js/photo-preview.js' %}" defer></script>
 {% endblock %}
