@@ -300,7 +300,13 @@ h1, h2, h3 {
 
 #map { height: 320px; border-radius: var(--radius-md); border: 0; }
 
-.sticky-inquiry { position: sticky; top: 5.5rem; }
+/* Sticky positioning only makes sense in the desktop 2-column layout —
+   on mobile this card sits inline in the single-column stack, and the
+   mobile-cta-bar already covers the same Call/WhatsApp/Site-Visit
+   actions, so pinning it mid-scroll would just be redundant clutter. */
+@media (min-width: 992px) {
+  .sticky-inquiry { position: sticky; top: 5.5rem; }
+}
 
 /* Detail page: additional-details list + amenities */
 .detail-list dt { color: var(--slate); font-weight: 500; padding: var(--space-2) 0; border-top: 1px solid var(--border); }
