@@ -15,7 +15,7 @@ from inquiries.notifications import (
 )
 
 from .forms import SellerListingForm
-from .models import Property, PropertyImage
+from .models import Location, Property, PropertyImage
 
 
 def _parse_decimal(value):
@@ -174,3 +174,27 @@ def sell_property(request):
         form = SellerListingForm()
 
     return render(request, "properties/sell.html", {"form": form})
+
+
+@cache_page(settings.PAGE_CACHE_SECONDS)
+@require_GET
+def location_detail(request, region):
+    if region not in Property.Region.values:
+        from django.http import Http404
+
+        raise Http404("Unknown region")
+
+    location, _created = Location.objects.get_or_create(region=region)
+    qs = (
+        Property.objects.filter(
+            moderation_status=Property.ModerationStatus.APPROVED, region=region
+        )
+        .exclude(status=Property.Status.SOLD)
+        .prefetch_related("images")
+        .order_by("-created_at")
+    )
+    paginator = Paginator(qs, 12)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    context = {"location": location, "page_obj": page_obj}
+    return render(request, "properties/location_detail.html", context)

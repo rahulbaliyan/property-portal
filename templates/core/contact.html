@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Contact{% endblock %}
+{% block meta_description %}Get in touch with {{ site_name }} — call, WhatsApp, or send a message and a property expert will get back to you.{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container text-center">
+    <h1 class="display-6">Talk to a Property Expert</h1>
+    <p class="lead col-lg-8 mx-auto">Questions about buying, selling, or a specific property — reach out however's easiest for you.</p>
+  </div>
+</section>
+
+<div class="container my-5">
+  <div class="row g-4 justify-content-center">
+    <div class="col-md-5 col-lg-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body p-4">
+          <h2 class="h5 section-title mb-4">Get in Touch</h2>
+          <ul class="list-unstyled small">
+            <li class="mb-3">
+              <a class="text-reset text-decoration-none d-flex align-items-center" href="tel:{{ contact_phone_1|cut:' ' }}">
+                <i class="bi bi-telephone-fill text-accent me-2"></i>{{ contact_phone_1 }}
+              </a>
+            </li>
+            <li class="mb-3">
+              <a class="text-reset text-decoration-none d-flex align-items-center" href="tel:{{ contact_phone_2|cut:' ' }}">
+                <i class="bi bi-telephone-fill text-accent me-2"></i>{{ contact_phone_2 }}
+              </a>
+            </li>
+            {% if settings_whatsapp_number %}
+              <li class="mb-3">
+                <a class="text-reset text-decoration-none d-flex align-items-center" href="https://wa.me/{{ settings_whatsapp_number }}" target="_blank" rel="noopener">
+                  <i class="bi bi-whatsapp text-accent me-2"></i>WhatsApp: {{ contact_phone_1 }}
+                </a>
+              </li>
+            {% endif %}
+            {% if settings_whatsapp_number_2 %}
+              <li class="mb-3">
+                <a class="text-reset text-decoration-none d-flex align-items-center" href="https://wa.me/{{ settings_whatsapp_number_2 }}" target="_blank" rel="noopener">
+                  <i class="bi bi-whatsapp text-accent me-2"></i>WhatsApp: {{ contact_phone_2 }}
+                </a>
+              </li>
+            {% endif %}
+          </ul>
+          <p class="small text-muted mb-0">We primarily serve Dehradun and the surrounding Uttarakhand hill regions — Maldevta, Thano, Sahastradhara, Dhanaulti, Mussoorie, Garhwal and Rishikesh.</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-7 col-lg-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body p-4">
+          <h2 class="h5 section-title mb-4">Send a Message</h2>
+          <form method="post">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+              <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="mb-2">
+              {{ form.name }}
+              {% for error in form.name.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="mb-2">
+              {{ form.phone }}
+              {% for error in form.phone.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="mb-2">
+              {{ form.email }}
+              {% for error in form.email.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="mb-3">
+              {{ form.message }}
+              {% for error in form.message.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
+            </div>
+            <button type="submit" class="btn btn-brand w-100">
+              <i class="bi bi-send me-1"></i>Send Message
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

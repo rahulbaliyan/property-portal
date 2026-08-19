@@ -11,17 +11,26 @@ from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
 
 from core.sitemaps import StaticViewSitemap
-from properties.sitemaps import PropertySitemap
+from properties import views as properties_views
+from properties.sitemaps import LocationSitemap, PropertySitemap
 
 sitemaps = {
     "static": StaticViewSitemap,
     "properties": PropertySitemap,
+    "locations": LocationSitemap,
 }
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
     path("properties/", include("properties.urls")),
+    # Root-level, matching the brief's exact requested URL shape
+    # (/properties-in-dehradun/, not nested under /properties/).
+    path(
+        "properties-in-<str:region>/",
+        properties_views.location_detail,
+        name="location_detail",
+    ),
     path("", include("core.urls")),
 ]
 

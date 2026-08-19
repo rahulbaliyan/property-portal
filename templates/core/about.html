@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}About{% endblock %}
+{% block meta_description %}{{ site_name }} helps buyers and sellers across Dehradun and Uttarakhand find, verify and complete property deals — plots, land, villas, flats and farmhouses.{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container text-center">
+    <p class="hero-eyebrow mb-2">About Us</p>
+    <h1 class="display-6">{{ site_name }}</h1>
+    <p class="lead col-lg-8 mx-auto">{{ site_tagline }}</p>
+  </div>
+</section>
+
+<div class="container my-5">
+  <div class="row align-items-center g-5">
+    <div class="col-lg-5">
+      <h2 class="why-us-heading">Who We Are</h2>
+      <p class="text-muted">We help buyers and sellers across Dehradun and the Uttarakhand hill regions find the right property, understand the location, and get through the transaction smoothly — not just list it.</p>
+    </div>
+    <div class="col-lg-7">
+      <div class="trust-stats row g-4 text-center py-4 py-md-5 mx-0">
+        <div class="col-6 col-md-3 trust-stat">
+          <div class="stat-number display-6"><span class="text-accent">35</span>+</div>
+          <p class="small text-muted mb-0">Happy Customers</p>
+        </div>
+        <div class="col-6 col-md-3 trust-stat">
+          <div class="stat-number display-6"><span class="text-accent">15</span></div>
+          <p class="small text-muted mb-0">Villas &amp; Houses Sold</p>
+        </div>
+        <div class="col-6 col-md-3 trust-stat">
+          <div class="stat-number display-6"><span class="text-accent">10</span></div>
+          <p class="small text-muted mb-0">Plots Sold</p>
+        </div>
+        <div class="col-6 col-md-3 trust-stat">
+          <div class="stat-number display-6"><span class="text-accent">10</span></div>
+          <p class="small text-muted mb-0">Flats Sold</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container my-5">
+  <h2 class="h4 section-title mb-2">What We Help With</h2>
+  <p class="text-muted mb-4">
+    <a href="{% url 'core:services' %}" class="text-brand text-decoration-none">See all services <i class="bi bi-arrow-right"></i></a>
+  </p>
+  <div class="row g-3 g-md-4 trust-strip">
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-shield-check"></i>
+      <span>Legal Consultancy</span>
+    </div>
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-bank"></i>
+      <span>Loan &amp; Financing</span>
+    </div>
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-clipboard-check"></i>
+      <span>Transaction Support</span>
+    </div>
+    <div class="col-6 col-md-3 trust-strip-item">
+      <i class="bi bi-people"></i>
+      <span>Buy, Sell &amp; Invest</span>
+    </div>
+  </div>
+</div>
+
+<div class="container my-5">
+  <h2 class="h4 section-title mb-2">Our Locations</h2>
+  <p class="text-muted mb-4">Every region we work in, and what's currently available in each.</p>
+  <div class="row g-4">
+    {% for location in locations %}
+      <div class="col-sm-6 col-lg-3">
+        <a href="{% url 'location_detail' region=location.region %}" class="location-card d-block h-100 text-decoration-none">
+          <div class="location-card-media">
+            {% if location.image %}
+              <img src="{{ location.optimized_image_url }}" alt="{{ location.get_region_display }}" loading="lazy">
+            {% else %}
+              <i class="bi bi-geo-alt"></i>
+            {% endif %}
+          </div>
+          <div class="location-card-body">
+            <h3 class="h6 mb-1">{{ location.get_region_display }}</h3>
+            <span class="small fw-semibold text-brand">
+              {% if location.listing_count %}{{ location.listing_count }} listing{{ location.listing_count|pluralize }}{% else %}Explore{% endif %}
+              <i class="bi bi-arrow-right ms-1"></i>
+            </span>
+          </div>
+        </a>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="sell-cta">
+  <div class="container text-center">
+    <h2 class="h3 mb-2">Questions Before You Get Started?</h2>
+    <p class="mb-4">We're happy to talk through your options.</p>
+    <a href="{% url 'core:contact' %}" class="btn btn-brand btn-lg px-4">Talk to Us</a>
+  </div>
+</div>
+{% endblock %}
