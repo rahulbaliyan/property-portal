@@ -246,6 +246,38 @@ class PropertyImage(models.Model):
     def __str__(self):
         return f"{self.property.title} image {self.pk}"
 
+    def optimized_url(self, width=None):
+        """Cloudinary's quality=auto,fetch_format=auto on the way out —
+        mirrors PropertyVideo.optimized_url()/Location.optimized_image_url().
+        Property photos were the one asset type still served as raw,
+        untransformed URLs. No-op locally (a plain, un-transformed file
+        on disk has nothing to optimize)."""
+        if settings.STORAGES["default"]["BACKEND"] != CLOUDINARY_IMAGE_BACKEND:
+            return self.image.url
+
+        import cloudinary
+
+        options = {"quality": "auto", "fetch_format": "auto", "secure": True}
+        if width:
+            options["width"] = width
+            options["crop"] = "limit"
+        url, _ = cloudinary.utils.cloudinary_url(self.image.name, **options)
+        return url
+
+    def srcset(self):
+        """A few width variants for a responsive srcset — empty locally,
+        where there's only the one original file and no CDN to derive
+        real variants from on the fly."""
+        if settings.STORAGES["default"]["BACKEND"] != CLOUDINARY_IMAGE_BACKEND:
+            return ""
+        widths = (400, 800, 1200)
+        return ", ".join(f"{self.optimized_url(width=w)} {w}w" for w in widths)
+
+    def thumbnail_url(self):
+        """A small (150px) variant for thumbnail strips — a no-arg
+        wrapper since Django templates can't pass method arguments."""
+        return self.optimized_url(width=150)
+
 
 class PropertyVideo(models.Model):
     property = models.ForeignKey(

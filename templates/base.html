@@ -18,6 +18,21 @@
   <meta property="og:image" content="{% block og_image %}{{ canonical_base_url }}{% static 'img/logo.png' %}{% endblock %}">
   <meta name="twitter:card" content="summary_large_image">
 
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "RealEstateAgent",
+    "name": "{{ site_name|escapejs }}",
+    "url": "{{ canonical_base_url }}/",
+    "image": "{{ canonical_base_url }}{% static 'img/logo.png' %}",
+    "telephone": "{{ contact_phone_1|escapejs }}",
+    "areaServed": [
+      {% for value, label in nav_regions %}"{{ label|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}
+    ]
+  }
+  </script>
+  {# No address/openingHours here — not published anywhere real to draw from; adding either would be a fabricated claim. #}
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"

@@ -6,7 +6,7 @@
 {% block og_type %}website{% endblock %}
 {% block og_title %}{{ property.title }}{% if property.public_price %} — &#8377;{{ property.public_price|floatformat:0 }}{% endif %}{% endblock %}
 {% block og_description %}{{ property.description|truncatewords:25|default:property.title }}{% endblock %}
-{% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.image.url }}{% else %}{{ canonical_base_url }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
+{% block og_image %}{% with img=property.images.all|first %}{% if img %}{{ img.optimized_url }}{% else %}{{ canonical_base_url }}{% static 'img/logo.png' %}{% endif %}{% endwith %}{% endblock %}
 
 {% block extra_head %}
   <script type="application/ld+json">
@@ -16,7 +16,14 @@
     "name": "{{ property.title|escapejs }}",
     "description": "{{ property.description|default:property.title|escapejs }}",
     "url": "{{ canonical_base_url }}{{ request.path }}",
-    {% with img=property.images.all|first %}{% if img %}"image": "{{ img.image.url }}",{% endif %}{% endwith %}
+    {% with img=property.images.all|first %}{% if img %}"image": "{{ img.optimized_url }}",{% endif %}{% endwith %}
+    {% if property.latitude and property.longitude %}
+    "geo": {
+      "@type": "GeoCoordinates",
+      "latitude": {{ property.latitude }},
+      "longitude": {{ property.longitude }}
+    },
+    {% endif %}
     {% if property.public_price %}
     "offers": {
       "@type": "Offer",
@@ -31,6 +38,17 @@
       "addressRegion": "Uttarakhand",
       "addressCountry": "IN"
     }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {"@type": "ListItem", "position": 1, "name": "Home", "item": "{{ canonical_base_url }}{% url 'core:home' %}"},
+      {"@type": "ListItem", "position": 2, "name": "Listings", "item": "{{ canonical_base_url }}{% url 'properties:list' %}"},
+      {"@type": "ListItem", "position": 3, "name": "{{ property.title|escapejs }}", "item": "{{ canonical_base_url }}{{ request.path }}"}
+    ]
   }
   </script>
 {% endblock %}
@@ -55,8 +73,8 @@
           <div class="carousel-inner h-100">
             {% for img in images %}
               <div class="carousel-item h-100 {% if forloop.first %}active{% endif %}">
-                <button type="button" class="gallery-zoom-trigger" data-full="{{ img.image.url }}" data-caption="{{ img.caption|default:property.title }}" aria-label="View full-size image">
-                  <img src="{{ img.image.url }}" class="d-block w-100 h-100" alt="{{ img.caption|default:property.title }}">
+                <button type="button" class="gallery-zoom-trigger" data-full="{{ img.optimized_url }}" data-caption="{{ img.caption|default:property.title }}" aria-label="View full-size image">
+                  <img src="{{ img.optimized_url }}" {% if img.srcset %}srcset="{{ img.srcset }}" sizes="(min-width: 992px) 66vw, 100vw"{% endif %} class="d-block w-100 h-100" alt="{{ img.caption|default:property.title }}" {% if not forloop.first %}loading="lazy"{% endif %}>
                   <span class="gallery-zoom-icon"><i class="bi bi-arrows-fullscreen"></i></span>
                 </button>
               </div>
@@ -79,7 +97,7 @@
               <button type="button" class="gallery-thumb {% if forloop.first %}active{% endif %}"
                       data-bs-target="#propertyGallery" data-bs-slide-to="{{ forloop.counter0 }}"
                       aria-label="Show image {{ forloop.counter }}">
-                <img src="{{ img.image.url }}" alt="">
+                <img src="{{ img.thumbnail_url }}" loading="lazy" alt="">
               </button>
             {% endfor %}
           </div>

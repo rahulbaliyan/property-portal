@@ -3,6 +3,20 @@
 {% block title %}Properties in {{ location.get_region_display }}{% endblock %}
 {% block meta_description %}{% if location.description %}{{ location.description|truncatewords:30 }}{% else %}Plots, land, villas and homes for sale in {{ location.get_region_display }}, Uttarakhand.{% endif %}{% endblock %}
 
+{% block extra_head %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {"@type": "ListItem", "position": 1, "name": "Home", "item": "{{ canonical_base_url }}{% url 'core:home' %}"},
+      {"@type": "ListItem", "position": 2, "name": "Listings", "item": "{{ canonical_base_url }}{% url 'properties:list' %}"},
+      {"@type": "ListItem", "position": 3, "name": "{{ location.get_region_display|escapejs }}", "item": "{{ canonical_base_url }}{{ request.path }}"}
+    ]
+  }
+  </script>
+{% endblock %}
+
 {% block content %}
 <section class="hero">
   <div class="container text-center">

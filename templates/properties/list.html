@@ -2,8 +2,27 @@
 
 {% block title %}Listings{% endblock %}
 
+{% block extra_head %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {"@type": "ListItem", "position": 1, "name": "Home", "item": "{{ canonical_base_url }}{% url 'core:home' %}"},
+      {"@type": "ListItem", "position": 2, "name": "Listings", "item": "{{ canonical_base_url }}{{ request.path }}"}
+    ]
+  }
+  </script>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'core:home' %}" class="text-decoration-none">Home</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Listings</li>
+    </ol>
+  </nav>
   <h1 class="h3 section-title mb-1">Find Your Property</h1>
   <p class="text-muted mb-4">Search plots, land, villas and homes across Dehradun and Uttarakhand.</p>
 

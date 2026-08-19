@@ -86,10 +86,13 @@ def contact(request):
 
 @require_GET
 def robots_txt(request):
+    # Always the canonical domain, matching every other canonical/OG URL
+    # on the site — not request.get_host(), which would emit the
+    # .onrender.com fallback host if crawled there instead.
     lines = [
         "User-agent: *",
         "Allow: /",
-        f"Sitemap: {request.scheme}://{request.get_host()}/sitemap.xml",
+        f"Sitemap: https://{settings.PREFERRED_DOMAIN}/sitemap.xml",
     ]
     return HttpResponse("\n".join(lines), content_type="text/plain")
 

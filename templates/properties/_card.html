@@ -5,7 +5,7 @@
       {% with img=property.images.all|first %}
       <div class="card-img-wrap">
         {% if img %}
-          <img src="{{ img.image.url }}" alt="{{ img.caption|default:property.title }}" loading="lazy">
+          <img src="{{ img.optimized_url }}" {% if img.srcset %}srcset="{{ img.srcset }}" sizes="(min-width: 992px) 33vw, (min-width: 576px) 50vw, 100vw"{% endif %} alt="{{ img.caption|default:property.title }}" loading="lazy">
         {% else %}
           {% with vid=property.videos.all|first %}
           {% if vid and vid.thumbnail_url %}
