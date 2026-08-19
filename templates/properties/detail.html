@@ -36,7 +36,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container py-4 property-detail-page">
 
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb small">
@@ -55,7 +55,10 @@
           <div class="carousel-inner h-100">
             {% for img in images %}
               <div class="carousel-item h-100 {% if forloop.first %}active{% endif %}">
-                <img src="{{ img.image.url }}" class="d-block w-100 h-100" alt="{{ img.caption|default:property.title }}">
+                <button type="button" class="gallery-zoom-trigger" data-full="{{ img.image.url }}" data-caption="{{ img.caption|default:property.title }}" aria-label="View full-size image">
+                  <img src="{{ img.image.url }}" class="d-block w-100 h-100" alt="{{ img.caption|default:property.title }}">
+                  <span class="gallery-zoom-icon"><i class="bi bi-arrows-fullscreen"></i></span>
+                </button>
               </div>
             {% endfor %}
           </div>
@@ -70,6 +73,17 @@
             </button>
           {% endif %}
         </div>
+        {% if images|length > 1 %}
+          <div class="gallery-thumbs">
+            {% for img in images %}
+              <button type="button" class="gallery-thumb {% if forloop.first %}active{% endif %}"
+                      data-bs-target="#propertyGallery" data-bs-slide-to="{{ forloop.counter0 }}"
+                      aria-label="Show image {{ forloop.counter }}">
+                <img src="{{ img.image.url }}" alt="">
+              </button>
+            {% endfor %}
+          </div>
+        {% endif %}
       {% else %}
         {% with vid=property.videos.all|first %}
         {% if vid and vid.thumbnail_url %}
@@ -145,8 +159,35 @@
         {% endif %}
       </div>
 
+      {% if property.road_width or property.ownership or property.registry_status or property.land_use %}
+        <h2 class="h5 section-title mt-4">Property Details</h2>
+        <dl class="detail-list row mb-0">
+          {% if property.road_width %}
+            <dt class="col-5 col-sm-4">Road Width</dt><dd class="col-7 col-sm-8">{{ property.road_width }}</dd>
+          {% endif %}
+          {% if property.ownership %}
+            <dt class="col-5 col-sm-4">Ownership</dt><dd class="col-7 col-sm-8">{{ property.get_ownership_display }}</dd>
+          {% endif %}
+          {% if property.registry_status %}
+            <dt class="col-5 col-sm-4">Registry Status</dt><dd class="col-7 col-sm-8">{{ property.registry_status }}</dd>
+          {% endif %}
+          {% if property.land_use %}
+            <dt class="col-5 col-sm-4">Land Use</dt><dd class="col-7 col-sm-8">{{ property.land_use }}</dd>
+          {% endif %}
+        </dl>
+      {% endif %}
+
+      {% if property.amenities %}
+        <h2 class="h5 section-title mt-4">Amenities</h2>
+        <ul class="amenities-list">
+          {% for item in property.amenities.splitlines %}
+            {% if item %}<li><i class="bi bi-check-circle-fill"></i>{{ item }}</li>{% endif %}
+          {% endfor %}
+        </ul>
+      {% endif %}
+
       {% if property.description %}
-        <h2 class="h5 section-title">Description</h2>
+        <h2 class="h5 section-title mt-4">Description</h2>
         <p class="text-muted" style="white-space: pre-line;">{{ property.description }}</p>
       {% endif %}
 
@@ -185,7 +226,7 @@
     </div>
 
     <div class="col-lg-4">
-      <div class="sticky-inquiry">
+      <div class="sticky-inquiry" id="inquiry-form">
         <div class="card shadow-sm mb-3">
           <div class="card-body">
             <h2 class="h5 mb-3">Interested in this property?</h2>
@@ -246,4 +287,22 @@
     </div>
   {% endif %}
 </div>
+
+<div class="mobile-cta-bar d-lg-none">
+  <a href="tel:{{ contact_phone_1|cut:' ' }}" class="mobile-cta-item">
+    <i class="bi bi-telephone-fill"></i>Call
+  </a>
+  {% if settings_whatsapp_number %}
+    <a href="https://wa.me/{{ settings_whatsapp_number }}?text={{ property.whatsapp_message|urlencode }}" target="_blank" rel="noopener" class="mobile-cta-item">
+      <i class="bi bi-whatsapp"></i>WhatsApp
+    </a>
+  {% endif %}
+  <a href="#inquiry-form" class="mobile-cta-item mobile-cta-primary">
+    <i class="bi bi-signpost-split-fill"></i>Site Visit
+  </a>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{% static 'js/gallery.js' %}" defer></script>
 {% endblock %}

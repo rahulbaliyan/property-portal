@@ -64,6 +64,12 @@ class Property(models.Model):
         PENDING = "pending", "Pending Review"
         REJECTED = "rejected", "Rejected"
 
+    class Ownership(models.TextChoices):
+        FREEHOLD = "freehold", "Freehold"
+        LEASEHOLD = "leasehold", "Leasehold"
+        POWER_OF_ATTORNEY = "power_of_attorney", "Power of Attorney"
+        COOPERATIVE_SOCIETY = "cooperative_society", "Cooperative Society"
+
     title = models.CharField(max_length=200)
     slug = models.SlugField(max_length=220, unique=True, blank=True)
     property_type = models.CharField(max_length=10, choices=PropertyType.choices)
@@ -82,6 +88,25 @@ class Property(models.Model):
     )
     bedrooms = models.PositiveSmallIntegerField(null=True, blank=True)
     bathrooms = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    # Optional detail-page fields — only ever shown when actually filled
+    # in for a given listing, never a placeholder "N/A" wall. Kept as
+    # plain text where real-world values vary too much for a fixed
+    # choice list (road width, land use, registry status).
+    road_width = models.CharField(
+        max_length=100, blank=True, help_text='e.g. "20 ft" — leave blank if unknown.'
+    )
+    ownership = models.CharField(max_length=25, choices=Ownership.choices, blank=True)
+    registry_status = models.CharField(
+        max_length=100, blank=True, help_text='e.g. "Registry Ready", "Registry in Process".'
+    )
+    land_use = models.CharField(
+        max_length=100, blank=True, help_text='e.g. "Residential", "Agricultural".'
+    )
+    amenities = models.TextField(
+        blank=True, help_text="Free text, one per line — only shown if filled in."
+    )
+
     description = models.TextField(blank=True)
     latitude = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True

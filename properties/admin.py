@@ -91,6 +91,13 @@ class PropertyAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Additional Details (optional — only shown publicly if filled in)",
+            {
+                "classes": ("collapse",),
+                "fields": ("road_width", "ownership", "registry_status", "land_use", "amenities"),
+            },
+        ),
+        (
             "Moderation",
             {
                 "fields": ("listing_source", "moderation_status"),

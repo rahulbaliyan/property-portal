@@ -199,6 +199,99 @@ h1, h2, h3 {
 }
 .gallery-main img { width: 100%; height: 100%; object-fit: cover; }
 
+.gallery-zoom-trigger {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  position: relative;
+  cursor: zoom-in;
+}
+.gallery-zoom-icon {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: rgba(23, 26, 24, 0.55);
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+
+.gallery-thumbs {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+.gallery-thumb {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 54px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gallery-thumb:hover { opacity: 1; }
+.gallery-thumb.active { opacity: 1; border-color: var(--accent); }
+
+/* Lightbox */
+.gallery-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  background: rgba(14, 16, 15, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gallery-lightbox[hidden] { display: none; }
+.gallery-lightbox img {
+  max-width: min(92vw, 1200px);
+  max-height: 84vh;
+  object-fit: contain;
+}
+.gallery-lightbox-caption {
+  position: absolute;
+  bottom: var(--space-5);
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.85rem;
+}
+.gallery-lightbox-close,
+.gallery-lightbox-prev,
+.gallery-lightbox-next {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.1);
+  border: 0;
+  color: var(--white);
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+.gallery-lightbox-close:hover,
+.gallery-lightbox-prev:hover,
+.gallery-lightbox-next:hover { background: rgba(255, 255, 255, 0.2); }
+.gallery-lightbox-close { top: var(--space-4); right: var(--space-4); }
+.gallery-lightbox-prev { left: var(--space-4); top: 50%; transform: translateY(-50%); }
+.gallery-lightbox-next { right: var(--space-4); top: 50%; transform: translateY(-50%); }
+
 .spec-pill {
   background-color: var(--bg-soft);
   border-radius: var(--radius-sm);
@@ -208,6 +301,51 @@ h1, h2, h3 {
 #map { height: 320px; border-radius: var(--radius-md); border: 0; }
 
 .sticky-inquiry { position: sticky; top: 5.5rem; }
+
+/* Detail page: additional-details list + amenities */
+.detail-list dt { color: var(--slate); font-weight: 500; padding: var(--space-2) 0; border-top: 1px solid var(--border); }
+.detail-list dd { padding: var(--space-2) 0; border-top: 1px solid var(--border); margin-bottom: 0; }
+.detail-list dt:first-of-type, .detail-list dd:first-of-type { border-top: none; }
+.amenities-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+.amenities-list li { font-size: 0.9rem; }
+.amenities-list i { color: var(--accent); margin-right: var(--space-2); }
+
+/* Mobile sticky CTA bar (property detail page only) */
+@media (max-width: 991.98px) {
+  .property-detail-page { padding-bottom: 4.75rem; }
+}
+.mobile-cta-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1030;
+  display: flex;
+  background: var(--white);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(23, 26, 24, 0.08);
+}
+.mobile-cta-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0.6rem 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--forest);
+  text-decoration: none;
+}
+.mobile-cta-item i { font-size: 1.05rem; }
+.mobile-cta-primary { background-color: var(--forest); color: var(--white); }
 
 /* Filter bar — a Bootstrap responsive offcanvas: a real bottom-sheet
    drawer below the lg breakpoint, a normal inline block above it. */
