@@ -160,5 +160,33 @@
         loadTehsils(savedDistrict, hidden.tehsilCode.value, hidden.villageCode.value);
       }
     });
+
+    // "Extract with AI" / "Run Bhulekh Check" are plain full-page POSTs
+    // (see change_form.html) that can take up to ~2 minutes with zero
+    // browser feedback beyond a tab spinner — which reads as "did
+    // nothing" (confirmed firsthand). Show an explicit notice the moment
+    // either is clicked so it's clear the click registered.
+    var actionMessages = {
+      "Extract with AI": "Extracting deed fields with AI — this can take up to 2 minutes. Please don’t close or refresh this tab.",
+      "Run Bhulekh Check": "Checking Bhulekh records — this can take up to a minute. Please don’t close or refresh this tab."
+    };
+    Object.keys(actionMessages).forEach(function (label) {
+      var btn = document.querySelector('input[type="submit"][value="' + label + '"]');
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        var notice = document.createElement("p");
+        notice.className = "help";
+        notice.style.color = "#c9962e";
+        notice.style.fontWeight = "bold";
+        notice.textContent = actionMessages[label];
+        btn.closest(".submit-row").insertAdjacentElement("afterend", notice);
+        document.querySelectorAll(
+          'input[type="submit"][value="Extract with AI"], input[type="submit"][value="Run Bhulekh Check"]'
+        ).forEach(function (b) {
+          b.disabled = true;
+        });
+        btn.value = "Working…";
+      });
+    });
   });
 })();
