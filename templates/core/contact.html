@@ -73,6 +73,10 @@
               {{ form.message }}
               {% for error in form.message.errors %}<div class="small text-danger mt-1">{{ error }}</div>{% endfor %}
             </div>
+            {% if turnstile_site_key %}
+              <div class="cf-turnstile mb-3" data-sitekey="{{ turnstile_site_key }}"></div>
+            {% endif %}
+
             <button type="submit" class="btn btn-brand w-100">
               <i class="bi bi-send me-1"></i>Send Message
             </button>
@@ -82,4 +86,10 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% if turnstile_site_key %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
 {% endblock %}

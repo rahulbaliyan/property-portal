@@ -16,4 +16,7 @@ def site_settings(request):
         # page has it, not just the views that already build it for
         # their own filters.
         "nav_regions": Property.Region.choices,
+        # Public key only — safe to expose. Blank until configured, and
+        # every template checks this before rendering the widget.
+        "turnstile_site_key": settings.TURNSTILE_SITE_KEY,
     }

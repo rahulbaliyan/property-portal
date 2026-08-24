@@ -11,6 +11,8 @@ from inquiries.forms import InquiryForm
 from inquiries.notifications import notify_new_inquiry_async
 from properties.models import Location, Property
 
+from .turnstile import verify_turnstile
+
 
 def _available_properties():
     return (
@@ -74,12 +76,14 @@ def contact(request):
     if request.method == "POST":
         form = InquiryForm(request.POST)
         if form.is_valid():
-            inquiry = form.save(commit=False)
-            inquiry.property = None
-            inquiry.save()
-            notify_new_inquiry_async(inquiry)
-            messages.success(request, "Thanks for reaching out — we'll get back to you soon.")
-            return redirect("core:contact")
+            if verify_turnstile(request):
+                inquiry = form.save(commit=False)
+                inquiry.property = None
+                inquiry.save()
+                notify_new_inquiry_async(inquiry)
+                messages.success(request, "Thanks for reaching out — we'll get back to you soon.")
+                return redirect("core:contact")
+            form.add_error(None, "Verification failed — please try again.")
     else:
         form = InquiryForm()
 

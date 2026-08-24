@@ -188,6 +188,16 @@ WHATSAPP_NOTIFY_TEMPLATE = env("WHATSAPP_NOTIFY_TEMPLATE", default="new_inquiry"
 WHATSAPP_ADMIN_NUMBER = env("WHATSAPP_ADMIN_NUMBER", default=WHATSAPP_NUMBER)
 WHATSAPP_ADMIN_NUMBER_2 = env("WHATSAPP_ADMIN_NUMBER_2", default=WHATSAPP_NUMBER_2)
 
+# Cloudflare Turnstile (free CAPTCHA) on the public Sell/Contact/Inquiry
+# forms. Get both keys from dash.cloudflare.com -> Turnstile -> Add site
+# (no domain ownership/DNS change needed, just a free Cloudflare account).
+# TURNSTILE_SITE_KEY is public (safe in HTML); TURNSTILE_SECRET_KEY is not.
+# Blank by default — matches every other optional integration in this
+# project: the widget simply doesn't render and verification is skipped
+# until both are configured, rather than breaking the forms.
+TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", default="")
+TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")
+
 # AI-assisted deed extraction (duediligence app). LangChain abstracts the
 # actual model behind these two settings, so switching provider is a config
 # change, not a code change — see duediligence/deed_ai.py.

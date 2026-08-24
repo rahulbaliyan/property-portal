@@ -10,6 +10,7 @@ from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET, require_http_methods
 from django_ratelimit.decorators import ratelimit
 
+from core.turnstile import verify_turnstile
 from inquiries.forms import InquiryForm
 from inquiries.notifications import (
     notify_new_inquiry_async,
@@ -126,15 +127,17 @@ def property_detail(request, slug):
     if request.method == "POST":
         form = InquiryForm(request.POST)
         if form.is_valid():
-            inquiry = form.save(commit=False)
-            inquiry.property = property_obj
-            inquiry.save()
-            notify_new_inquiry_async(inquiry)
-            messages.success(
-                request,
-                "Thanks! Your inquiry has been sent — we'll get back to you soon.",
-            )
-            return redirect(property_obj.get_absolute_url())
+            if verify_turnstile(request):
+                inquiry = form.save(commit=False)
+                inquiry.property = property_obj
+                inquiry.save()
+                notify_new_inquiry_async(inquiry)
+                messages.success(
+                    request,
+                    "Thanks! Your inquiry has been sent — we'll get back to you soon.",
+                )
+                return redirect(property_obj.get_absolute_url())
+            form.add_error(None, "Verification failed — please try again.")
     else:
         form = InquiryForm()
 
@@ -160,7 +163,11 @@ MAX_SELLER_PHOTOS = 10
 def sell_property(request):
     if request.method == "POST":
         form = SellerListingForm(request.POST)
-        if form.is_valid():
+        form_valid = form.is_valid()
+        if form_valid and not verify_turnstile(request):
+            form_valid = False
+            form.add_error(None, "Verification failed — please try again.")
+        if form_valid:
             property_obj = form.save(commit=False)
             property_obj.listing_source = Property.ListingSource.SELLER
             property_obj.moderation_status = Property.ModerationStatus.PENDING
