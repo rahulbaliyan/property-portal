@@ -5,7 +5,13 @@ services:
     plan: free
     branch: main
     buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput --upload-unhashed-files && python manage.py migrate"
-    startCommand: "gunicorn config.wsgi:application"
+    # --timeout 180: gunicorn's 30s default kills the worker before AI
+    # deed extraction (duediligence's "Extract with AI") finishes — a real
+    # scanned deed PDF measured at ~90s against Gemini. On this single
+    # -worker free tier the whole site is unresponsive for that long, but
+    # it's an admin-only, once-per-report action, so the tradeoff is
+    # accepted rather than adding background-thread complexity.
+    startCommand: "gunicorn config.wsgi:application --timeout 180"
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.production
