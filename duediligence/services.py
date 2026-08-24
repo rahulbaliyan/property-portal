@@ -273,8 +273,17 @@ def extract_deed(report: TitleCheckReport) -> None:
         report.save()
         return
 
-    with report.deed_pdf.open("rb") as f:
-        pdf_bytes = f.read()
+    try:
+        with report.deed_pdf.open("rb") as f:
+            pdf_bytes = f.read()
+    except Exception as exc:  # noqa: BLE001 — storage backend (Cloudinary in
+        # production) can fail in ways specific to that backend; this must
+        # never raise to the caller, matching this function's own contract.
+        report.extraction_status = TitleCheckReport.ExtractionStatus.ERROR
+        report.extraction_error = f"Could not read the deed PDF: {exc.__class__.__name__}: {exc}"
+        report.extracted_at = timezone.now()
+        report.save()
+        return
 
     try:
         extracted, raw_json = deed_ai.extract_deed_fields(pdf_bytes)

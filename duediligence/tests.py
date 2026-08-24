@@ -349,6 +349,14 @@ class ExtractDeedServiceTests(TestCase):
         self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.ERROR)
         self.assertIn("No deed PDF", report.extraction_error)
 
+    def test_pdf_read_failure_sets_error_status_instead_of_raising(self):
+        report = self._report_with_pdf()
+        with patch.object(TitleCheckReport.deed_pdf.field.attr_class, "open", side_effect=OSError("connection reset")):
+            services.extract_deed(report)  # must not raise
+        report.refresh_from_db()
+        self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.ERROR)
+        self.assertIn("connection reset", report.extraction_error)
+
     @patch("duediligence.services.deed_ai.extract_deed_fields")
     def test_extraction_error_sets_error_status(self, mock_extract):
         mock_extract.side_effect = deed_ai.DeedExtractionRequestError("timed out")
