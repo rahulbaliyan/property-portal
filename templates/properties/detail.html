@@ -270,6 +270,7 @@
 
             <form method="post">
               {% csrf_token %}
+              <div class="d-none">{{ form.website }}</div>
               <div class="mb-2">
                 {{ form.name }}
                 {% for error in form.name.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}

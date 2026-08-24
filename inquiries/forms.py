@@ -4,6 +4,11 @@ from .models import Inquiry
 
 
 class InquiryForm(forms.ModelForm):
+    # Same honeypot pattern as SellerListingForm: hidden via CSS, invisible
+    # and unreachable by keyboard for real visitors. This form previously
+    # had no spam protection at all, unlike the sell form.
+    website = forms.CharField(required=False, widget=forms.HiddenInput)
+
     class Meta:
         model = Inquiry
         fields = ["name", "phone", "email", "message"]
@@ -25,3 +30,8 @@ class InquiryForm(forms.ModelForm):
                 }
             ),
         }
+
+    def clean_website(self):
+        if self.cleaned_data.get("website"):
+            raise forms.ValidationError("Spam detected.")
+        return self.cleaned_data.get("website")

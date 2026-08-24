@@ -5,6 +5,7 @@ from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET, require_http_methods
+from django_ratelimit.decorators import ratelimit
 
 from inquiries.forms import InquiryForm
 from inquiries.notifications import notify_new_inquiry_async
@@ -67,6 +68,7 @@ def services(request):
     return render(request, "core/services.html")
 
 
+@ratelimit(key="ip", rate="5/h", method="POST", block=True)
 @require_http_methods(["GET", "POST"])
 def contact(request):
     if request.method == "POST":

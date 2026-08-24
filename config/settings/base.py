@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sitemaps",
+    "django_ratelimit",
     # local apps
     "core",
     "properties",
@@ -116,6 +117,15 @@ CACHES = {
 # admin-added/edited property shows up. GET-only pages with no
 # per-visitor content, so this is safe to share across everyone.
 PAGE_CACHE_SECONDS = env.int("PAGE_CACHE_SECONDS", default=300)
+
+# django-ratelimit's own check (E003) flags LocMemCache as an
+# unsupported backend, since counts aren't shared across workers in a
+# multi-worker deployment. Same single-worker constraint already
+# documented above for CACHES applies here too — one worker means
+# LocMemCache's per-process state IS the whole app's state, so rate
+# limiting works correctly as configured. Revisit if worker count ever
+# changes (which would need a shared cache backend regardless).
+SILENCED_SYSTEM_CHECKS = ["django_ratelimit.E003"]
 
 SITE_NAME = env("SITE_NAME", default="Shiv Shakti Developers")
 SITE_TAGLINE = env("SITE_TAGLINE", default="Building Trust. Creating Spaces.")

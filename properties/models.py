@@ -1,9 +1,25 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
 
 CLOUDINARY_IMAGE_BACKEND = "cloudinary_storage.storage.MediaCloudinaryStorage"
+
+MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB — generous for a phone photo, not for abuse
+
+
+def validate_image_size(file):
+    """No size limit existed anywhere before this — an unauthenticated
+    visitor (via the public Sell Your Property form) could upload
+    arbitrarily large files, which storage/bandwidth abuse aside is
+    also the kind of thing that keeps a request open long enough to be
+    a cheap DoS vector on a single-worker deploy."""
+    if file.size > MAX_IMAGE_UPLOAD_BYTES:
+        raise ValidationError(
+            f"Image is too large ({file.size / 1024 / 1024:.1f} MB) — "
+            f"the limit is {MAX_IMAGE_UPLOAD_BYTES // 1024 // 1024} MB."
+        )
 
 
 def video_storage():
@@ -203,6 +219,7 @@ class Location(models.Model):
         upload_to="locations/",
         null=True,
         blank=True,
+        validators=[validate_image_size],
         help_text="Leave blank until a real photograph is available — falls "
         "back to a plain placeholder rather than a stock image.",
     )
@@ -235,7 +252,9 @@ class PropertyImage(models.Model):
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, related_name="images"
     )
-    image = models.ImageField(upload_to="properties/%Y/%m/")
+    image = models.ImageField(
+        upload_to="properties/%Y/%m/", validators=[validate_image_size]
+    )
     caption = models.CharField(max_length=200, blank=True)
     is_primary = models.BooleanField(default=False)
     order = models.PositiveSmallIntegerField(default=0)

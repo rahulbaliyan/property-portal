@@ -2,11 +2,13 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET, require_http_methods
+from django_ratelimit.decorators import ratelimit
 
 from inquiries.forms import InquiryForm
 from inquiries.notifications import (
@@ -15,7 +17,13 @@ from inquiries.notifications import (
 )
 
 from .forms import SellerListingForm
-from .models import Location, Property, PropertyImage
+from .models import (
+    MAX_IMAGE_UPLOAD_BYTES,
+    Location,
+    Property,
+    PropertyImage,
+    validate_image_size,
+)
 
 
 def _parse_decimal(value):
@@ -105,6 +113,7 @@ def property_list(request):
     return render(request, "properties/list.html", context)
 
 
+@ratelimit(key="ip", rate="10/h", method="POST", block=True)
 @require_http_methods(["GET", "POST"])
 def property_detail(request, slug):
     property_obj = get_object_or_404(
@@ -146,6 +155,7 @@ def property_detail(request, slug):
 MAX_SELLER_PHOTOS = 10
 
 
+@ratelimit(key="ip", rate="5/h", method="POST", block=True)
 @require_http_methods(["GET", "POST"])
 def sell_property(request):
     if request.method == "POST":
@@ -157,10 +167,18 @@ def sell_property(request):
             property_obj.save()
 
             photos = request.FILES.getlist("photos")[:MAX_SELLER_PHOTOS]
-            for order, photo in enumerate(photos):
+            oversized = 0
+            order = 0
+            for photo in photos:
+                try:
+                    validate_image_size(photo)
+                except ValidationError:
+                    oversized += 1
+                    continue
                 PropertyImage.objects.create(
                     property=property_obj, image=photo, order=order
                 )
+                order += 1
 
             notify_new_seller_submission_async(property_obj)
 
@@ -169,6 +187,12 @@ def sell_property(request):
                 "Thanks! Your listing has been submitted for review. "
                 "Our team will reach out once it's approved and live.",
             )
+            if oversized:
+                messages.warning(
+                    request,
+                    f"{oversized} photo(s) were skipped for being over "
+                    f"{MAX_IMAGE_UPLOAD_BYTES // 1024 // 1024} MB — the rest were submitted fine.",
+                )
             return redirect("properties:sell")
     else:
         form = SellerListingForm()
