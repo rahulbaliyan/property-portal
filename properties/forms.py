@@ -1,5 +1,7 @@
 from django import forms
 
+from inquiries.forms import reject_spam_content
+
 from .models import Property
 
 
@@ -77,3 +79,12 @@ class SellerListingForm(forms.ModelForm):
         if self.cleaned_data.get("website"):
             raise forms.ValidationError("Spam detected.")
         return self.cleaned_data.get("website")
+
+    def clean_title(self):
+        return reject_spam_content(self.cleaned_data.get("title"))
+
+    def clean_seller_name(self):
+        return reject_spam_content(self.cleaned_data.get("seller_name"))
+
+    def clean_description(self):
+        return reject_spam_content(self.cleaned_data.get("description"))
