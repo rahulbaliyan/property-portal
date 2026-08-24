@@ -130,6 +130,15 @@ class DeedExtractionSchema(BaseModel):
     )
 
 
+# Bounds worst-case latency well within gunicorn's --timeout 180 (see
+# render.yaml) so a struggling provider fails fast with a clear error
+# instead of hanging. Measured firsthand: without this, a live call to
+# Google during a "high demand" 503 period took 11+ minutes to give up
+# — the underlying SDK's own retry behavior, not our code — which
+# would get silently killed by gunicorn with nothing saved anywhere.
+REQUEST_TIMEOUT_SECONDS = 120
+
+
 def _build_model():
     """Picks the backing chat model from settings.AI_EXTRACTION_PROVIDER.
     This is the one place that knows which provider is active — the schema,
@@ -144,7 +153,11 @@ def _build_model():
             )
         from langchain_anthropic import ChatAnthropic
 
-        model = ChatAnthropic(model=ANTHROPIC_MODEL, api_key=settings.ANTHROPIC_API_KEY)
+        model = ChatAnthropic(
+            model=ANTHROPIC_MODEL,
+            api_key=settings.ANTHROPIC_API_KEY,
+            default_request_timeout=REQUEST_TIMEOUT_SECONDS,
+        )
     elif provider == "openai":
         if not settings.OPENAI_API_KEY:
             raise DeedExtractionConfigError(
@@ -153,7 +166,11 @@ def _build_model():
             )
         from langchain_openai import ChatOpenAI
 
-        model = ChatOpenAI(model=OPENAI_MODEL, api_key=settings.OPENAI_API_KEY)
+        model = ChatOpenAI(
+            model=OPENAI_MODEL,
+            api_key=settings.OPENAI_API_KEY,
+            request_timeout=REQUEST_TIMEOUT_SECONDS,
+        )
     elif provider == "google":
         if not settings.GOOGLE_API_KEY:
             raise DeedExtractionConfigError(
@@ -162,7 +179,11 @@ def _build_model():
             )
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        model = ChatGoogleGenerativeAI(model=GOOGLE_MODEL, google_api_key=settings.GOOGLE_API_KEY)
+        model = ChatGoogleGenerativeAI(
+            model=GOOGLE_MODEL,
+            google_api_key=settings.GOOGLE_API_KEY,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
     else:
         raise DeedExtractionConfigError(
             f"Unrecognized AI_EXTRACTION_PROVIDER: {provider!r} (expected "
