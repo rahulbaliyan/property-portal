@@ -11,6 +11,7 @@ from inquiries.forms import InquiryForm
 from inquiries.notifications import notify_new_inquiry_async
 from properties.models import Location, Property
 
+from .content_review import review_submission
 from .turnstile import verify_turnstile
 
 
@@ -76,14 +77,19 @@ def contact(request):
     if request.method == "POST":
         form = InquiryForm(request.POST)
         if form.is_valid():
-            if verify_turnstile(request):
+            if not verify_turnstile(request):
+                form.add_error(None, "Verification failed — please try again.")
+            elif not review_submission(
+                {"name": form.cleaned_data["name"], "message": form.cleaned_data["message"]}
+            ):
+                form.add_error(None, "This submission couldn't be processed — please rephrase and try again.")
+            else:
                 inquiry = form.save(commit=False)
                 inquiry.property = None
                 inquiry.save()
                 notify_new_inquiry_async(inquiry)
                 messages.success(request, "Thanks for reaching out — we'll get back to you soon.")
                 return redirect("core:contact")
-            form.add_error(None, "Verification failed — please try again.")
     else:
         form = InquiryForm()
 

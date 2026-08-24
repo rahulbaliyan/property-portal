@@ -10,6 +10,7 @@ from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET, require_http_methods
 from django_ratelimit.decorators import ratelimit
 
+from core.content_review import review_submission
 from core.turnstile import verify_turnstile
 from inquiries.forms import InquiryForm
 from inquiries.notifications import (
@@ -127,7 +128,13 @@ def property_detail(request, slug):
     if request.method == "POST":
         form = InquiryForm(request.POST)
         if form.is_valid():
-            if verify_turnstile(request):
+            if not verify_turnstile(request):
+                form.add_error(None, "Verification failed — please try again.")
+            elif not review_submission(
+                {"name": form.cleaned_data["name"], "message": form.cleaned_data["message"]}
+            ):
+                form.add_error(None, "This submission couldn't be processed — please rephrase and try again.")
+            else:
                 inquiry = form.save(commit=False)
                 inquiry.property = property_obj
                 inquiry.save()
@@ -137,7 +144,6 @@ def property_detail(request, slug):
                     "Thanks! Your inquiry has been sent — we'll get back to you soon.",
                 )
                 return redirect(property_obj.get_absolute_url())
-            form.add_error(None, "Verification failed — please try again.")
     else:
         form = InquiryForm()
 
@@ -167,6 +173,14 @@ def sell_property(request):
         if form_valid and not verify_turnstile(request):
             form_valid = False
             form.add_error(None, "Verification failed — please try again.")
+        if form_valid and not review_submission(
+            {
+                "title": form.cleaned_data["title"],
+                "description": form.cleaned_data["description"],
+            }
+        ):
+            form_valid = False
+            form.add_error(None, "This submission couldn't be processed — please rephrase and try again.")
         if form_valid:
             property_obj = form.save(commit=False)
             property_obj.listing_source = Property.ListingSource.SELLER

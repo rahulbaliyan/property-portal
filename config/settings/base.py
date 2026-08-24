@@ -212,3 +212,13 @@ ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 # From aistudio.google.com -> Get API key.
 GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="")
+
+# AI content review on public form submissions (Sell/Contact/Inquiry) —
+# a secondary layer on top of the honeypot, regex spam check, and
+# Turnstile, catching well-formed spam/scam/abusive text that has no
+# links or bot-fingerprints for those to catch. Reuses the same
+# AI_EXTRACTION_PROVIDER/keys above rather than adding a separate set.
+# Explicit opt-in (default off) even though the key may already be
+# configured for deed extraction — using it for a second purpose
+# shouldn't happen silently. See core/content_review.py.
+AI_CONTENT_REVIEW_ENABLED = env.bool("AI_CONTENT_REVIEW_ENABLED", default=False)
