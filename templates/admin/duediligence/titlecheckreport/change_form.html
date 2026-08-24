@@ -17,16 +17,22 @@
   {{ block.super }}
   {% if change %}
     <div class="submit-row">
+      {% comment %}
+        This block renders INSIDE the admin's own <form> (it doesn't close
+        until much later in admin/change_form.html) — a nested <form> here
+        would be invalid HTML that browsers silently rewrite, folding these
+        buttons into the main Save form instead of the intended URL (this
+        was confirmed happening for "Extract with AI" specifically). Using
+        formaction/formmethod on plain submit inputs avoids that entirely —
+        they submit to a different URL without needing their own <form>.
+        The outer form's other field values ride along in the POST body,
+        which is harmless: both target views only use the object_id from
+        the URL and re-fetch the report fresh from the database.
+      {% endcomment %}
       {% if original.deed_pdf %}
-        <form method="post" action="{% url 'admin:duediligence_titlecheckreport_extract_ai' original.pk %}">
-          {% csrf_token %}
-          <input type="submit" value="Extract with AI" class="default">
-        </form>
+        <input type="submit" formaction="{% url 'admin:duediligence_titlecheckreport_extract_ai' original.pk %}" formmethod="post" formnovalidate value="Extract with AI" class="default">
       {% endif %}
-      <form method="post" action="{% url 'admin:duediligence_titlecheckreport_run_check' original.pk %}">
-        {% csrf_token %}
-        <input type="submit" value="Run Bhulekh Check" class="default">
-      </form>
+      <input type="submit" formaction="{% url 'admin:duediligence_titlecheckreport_run_check' original.pk %}" formmethod="post" formnovalidate value="Run Bhulekh Check" class="default">
       {% if original.status != "draft" %}
         <a class="button" href="{% url 'admin:duediligence_titlecheckreport_report' original.pk %}">
           View Report
