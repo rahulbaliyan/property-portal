@@ -21,6 +21,25 @@ def reject_spam_content(value):
     return value
 
 
+# Allows the punctuation real phone numbers actually use (+91 83329
+# 43533, (555) 123-4567, etc.) but rejects everything else — letters,
+# URLs, script tags. Length check (7-15 digits) matches the ITU E.164
+# international numbering standard, so it doesn't reject legitimate
+# numbers while still catching garbage.
+_PHONE_ALLOWED_CHARS = re.compile(r"^[\d\s()+-]+$")
+
+
+def validate_phone_number(value):
+    if not value:
+        return value
+    if not _PHONE_ALLOWED_CHARS.match(value):
+        raise forms.ValidationError("Enter a valid phone number (digits only, with optional +, spaces, or dashes).")
+    digit_count = len(re.sub(r"\D", "", value))
+    if not (7 <= digit_count <= 15):
+        raise forms.ValidationError("Enter a valid phone number.")
+    return value
+
+
 class InquiryForm(forms.ModelForm):
     # Same honeypot pattern as SellerListingForm: hidden via CSS, invisible
     # and unreachable by keyboard for real visitors. This form previously
@@ -59,3 +78,6 @@ class InquiryForm(forms.ModelForm):
 
     def clean_message(self):
         return reject_spam_content(self.cleaned_data.get("message"))
+
+    def clean_phone(self):
+        return validate_phone_number(self.cleaned_data.get("phone"))

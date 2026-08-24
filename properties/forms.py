@@ -1,6 +1,6 @@
 from django import forms
 
-from inquiries.forms import reject_spam_content
+from inquiries.forms import reject_spam_content, validate_phone_number
 
 from .models import Property
 
@@ -88,3 +88,6 @@ class SellerListingForm(forms.ModelForm):
 
     def clean_description(self):
         return reject_spam_content(self.cleaned_data.get("description"))
+
+    def clean_seller_phone(self):
+        return validate_phone_number(self.cleaned_data.get("seller_phone"))
