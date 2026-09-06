@@ -137,9 +137,30 @@ def _fetch_and_store_khata(session, report: TitleCheckReport, khata_number: str)
 
     parsed_entries = parse_mutation_entries(raw_html)
     MutationEntry.objects.bulk_create(
-        MutationEntry(khata_lookup=khata_lookup, **fields) for fields in parsed_entries
+        MutationEntry(khata_lookup=khata_lookup, **_truncate_to_field_lengths(MutationEntry, fields))
+        for fields in parsed_entries
     )
     return khata_lookup
+
+
+def _truncate_to_field_lengths(model, fields: dict) -> dict:
+    """bulk_create() skips full_clean(), so a CharField value longer than
+    its column (parsing.py's seller/buyer-name regexes have no upper
+    bound) reaches Postgres raw and crashes with StringDataRightTruncation
+    instead of saving — confirmed live against a real khata whose mutation
+    log had a longer name/address block than any previously-tested record.
+    raw_text (a TextField, unlimited) always keeps the untouched original,
+    so truncating these convenience/display fields loses nothing a human
+    can't already read there."""
+    max_lengths = {
+        f.name: f.max_length
+        for f in model._meta.get_fields()
+        if getattr(f, "max_length", None)
+    }
+    return {
+        key: (value[: max_lengths[key]] if key in max_lengths and isinstance(value, str) else value)
+        for key, value in fields.items()
+    }
 
 
 def _find_latest_mutation_for_khasra(khata_lookup: KhataLookup, khasra_number: str):

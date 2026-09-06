@@ -247,6 +247,35 @@ class RunCheckServiceTests(TestCase):
         self.assertEqual(report.risk_level, TitleCheckReport.RiskLevel.GRAY)
         self.assertTrue(report.last_run_error)
 
+    @patch("duediligence.services.bhulekh.fetch_khata_report_html")
+    @patch("duediligence.services.bhulekh.lookup_khasra")
+    @patch("duediligence.services.bhulekh.new_session")
+    def test_overlong_mutation_field_is_truncated_not_crashed(
+        self, mock_new_session, mock_lookup, mock_fetch
+    ):
+        """bulk_create() skips full_clean() — confirmed live against a real
+        khata whose mutation log had a seller/buyer name+address longer
+        than MutationEntry's 200-char columns, which crashed with a raw
+        StringDataRightTruncation instead of saving. seller_name here is
+        400 chars, deliberately double the column's max_length."""
+        mock_new_session.return_value = MagicMock()
+        mock_lookup.return_value = {"khata_number": "222", "khasra_number": "410", "unique_gata_id": "x"}
+        overlong_html = REAL_ENTRY_HTML.replace(
+            "पुरण सिंह राणा पुत्र पुश्य सिंह राणा नि. 74 कुमराडा,", "अ" * 400
+        )
+        mock_fetch.return_value = overlong_html
+
+        report = TitleCheckReport.objects.create(village_code="045187")
+        KhasraEntry.objects.create(report=report, khasra_number="410", order=0)
+
+        services.run_check(report)  # must not raise
+        report.refresh_from_db()
+
+        self.assertEqual(report.status, TitleCheckReport.Status.COMPLETE)
+        entry = MutationEntry.objects.get(khata_lookup__report=report)
+        self.assertEqual(len(entry.seller_name), 200)  # truncated to fit, not dropped
+        self.assertGreater(len(entry.raw_text), 200)  # full text still preserved
+
 
 class AdminAccessControlTests(TestCase):
     def setUp(self):
