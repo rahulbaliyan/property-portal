@@ -173,9 +173,7 @@ class TitleCheckReportAdmin(admin.ModelAdmin):
 
         services.extract_deed(report)
         report.refresh_from_db()
-        self.message_user(
-            request, f"Extraction {report.get_extraction_status_display()}"
-        )
+        self.message_user(request, report.get_extraction_status_display())
         return redirect(
             reverse("admin:duediligence_titlecheckreport_change", args=[report.pk])
         )
