@@ -311,6 +311,113 @@ class AdminAccessControlTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class RunCheckQueueingTests(TestCase):
+    """bhulekh.uk.gov.in blocks this server's own network (confirmed from
+    both Render and GitHub Actions) — 'Run Bhulekh Check' can only queue
+    the report for poll_bhulekh_queue (running elsewhere) to pick up, never
+    call services.run_check() itself."""
+
+    def setUp(self):
+        self.client = Client()
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.report = TitleCheckReport.objects.create(
+            village_code="045187", last_run_error="stale error from a previous run"
+        )
+
+    @patch("duediligence.admin.services.run_check")
+    def test_run_check_view_queues_instead_of_running(self, mock_run_check):
+        url = reverse("admin:duediligence_titlecheckreport_run_check", args=[self.report.pk])
+        response = self.client.post(url)
+
+        mock_run_check.assert_not_called()
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.status, TitleCheckReport.Status.QUEUED)
+        self.assertEqual(self.report.last_run_error, "")
+        self.assertRedirects(
+            response,
+            reverse("admin:duediligence_titlecheckreport_change", args=[self.report.pk]),
+        )
+
+    def test_run_check_view_rejects_get(self):
+        url = reverse("admin:duediligence_titlecheckreport_run_check", args=[self.report.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_status_endpoint_reports_current_state(self):
+        self.report.status = TitleCheckReport.Status.QUEUED
+        self.report.save()
+        url = reverse("admin:duediligence_titlecheckreport_status", args=[self.report.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "queued")
+
+    def test_status_endpoint_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:duediligence_titlecheckreport_status", args=[self.report.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+
+    def test_change_form_renders_with_queued_status(self):
+        self.report.status = TitleCheckReport.Status.QUEUED
+        self.report.save()
+        url = reverse("admin:duediligence_titlecheckreport_change", args=[self.report.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Bhulekh check queued")
+        self.assertContains(response, "DUEDILIGENCE_STATUS_POLL_URL")
+
+
+class PollBhulekhQueueCommandTests(TestCase):
+    def setUp(self):
+        self.queued = TitleCheckReport.objects.create(
+            village_code="045187", status=TitleCheckReport.Status.QUEUED
+        )
+        self.draft = TitleCheckReport.objects.create(
+            village_code="045187", status=TitleCheckReport.Status.DRAFT
+        )
+
+    @patch("duediligence.management.commands.poll_bhulekh_queue.services.run_check")
+    def test_once_processes_only_queued_reports(self, mock_run_check):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        call_command("poll_bhulekh_queue", "--once", stdout=StringIO())
+
+        mock_run_check.assert_called_once_with(self.queued)
+
+    @patch("duediligence.management.commands.poll_bhulekh_queue.services.run_check")
+    def test_once_with_empty_queue_returns_immediately(self, mock_run_check):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        self.queued.status = TitleCheckReport.Status.DRAFT
+        self.queued.save()
+
+        call_command("poll_bhulekh_queue", "--once", stdout=StringIO())
+
+        mock_run_check.assert_not_called()
+
+    @patch("duediligence.management.commands.poll_bhulekh_queue.services.run_check")
+    def test_one_bad_report_does_not_stop_the_others(self, mock_run_check):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        TitleCheckReport.objects.create(
+            village_code="045187", status=TitleCheckReport.Status.QUEUED
+        )
+        mock_run_check.side_effect = [RuntimeError("boom"), None]
+
+        call_command("poll_bhulekh_queue", "--once", stdout=StringIO(), stderr=StringIO())
+
+        self.assertEqual(mock_run_check.call_count, 2)
+
+
 class DeedAiClientTests(TestCase):
     @override_settings(AI_EXTRACTION_PROVIDER="anthropic", ANTHROPIC_API_KEY="")
     def test_config_error_when_anthropic_key_blank(self):

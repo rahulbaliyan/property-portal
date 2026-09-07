@@ -11,6 +11,11 @@
     };
   </script>
   <script src="{% static 'duediligence/admin_lookup.js' %}" defer></script>
+  {% if change and original.status == "queued" %}
+    <script>
+      window.DUEDILIGENCE_STATUS_POLL_URL = "{% url 'admin:duediligence_titlecheckreport_status' original.pk %}";
+    </script>
+  {% endif %}
 {% endblock %}
 
 {% block after_related_objects %}
@@ -33,12 +38,18 @@
         <input type="submit" formaction="{% url 'admin:duediligence_titlecheckreport_extract_ai' original.pk %}" formmethod="post" formnovalidate value="Extract with AI" class="default">
       {% endif %}
       <input type="submit" formaction="{% url 'admin:duediligence_titlecheckreport_run_check' original.pk %}" formmethod="post" formnovalidate value="Run Bhulekh Check" class="default">
-      {% if original.status != "draft" %}
+      {% if original.status == "complete" or original.status == "failed" %}
         <a class="button" href="{% url 'admin:duediligence_titlecheckreport_report' original.pk %}">
           View Report
         </a>
       {% endif %}
     </div>
+    {% if original.status == "queued" %}
+      <p class="help" id="bhulekh-queued-note" style="color:#c9962e; font-weight:bold;">
+        Bhulekh check queued — waiting for the local checker to pick it up
+        (this page updates itself automatically once it's done).
+      </p>
+    {% endif %}
     <p class="help">
       Save any changes below first — both actions use the fields, khasra
       rows, and deed PDF as currently saved, not unsaved edits on this page.

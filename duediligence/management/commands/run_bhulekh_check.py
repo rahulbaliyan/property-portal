@@ -6,11 +6,13 @@ from duediligence.models import TitleCheckReport
 
 class Command(BaseCommand):
     help = (
-        "Run the Bhulekh cross-check for a TitleCheckReport. Exists because "
-        "bhulekh.uk.gov.in appears to block Render's outbound IP range "
-        "(ConnectTimeout from production, confirmed working from a non-cloud "
-        "network) — run this locally against DATABASE_URL pointed at "
-        "production instead of clicking 'Run Bhulekh Check' in the live admin."
+        "Run the Bhulekh cross-check for one specific TitleCheckReport, "
+        "right now, regardless of its queue status. For the normal "
+        "workflow — the live admin's 'Run Bhulekh Check' button queues a "
+        "report and 'poll_bhulekh_queue' (see docs/BHULEKH_POLLER.md) "
+        "picks it up automatically — you don't need this command at all. "
+        "It's here for one-off ad-hoc runs (e.g. re-running a single "
+        "report without waiting for the poller's next cycle)."
     )
 
     def add_arguments(self, parser):

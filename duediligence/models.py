@@ -20,6 +20,7 @@ def deed_pdf_storage():
 class TitleCheckReport(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft — Not Yet Checked"
+        QUEUED = "queued", "Bhulekh Check Queued"
         COMPLETE = "complete", "Check Complete"
         FAILED = "failed", "Check Failed"
 

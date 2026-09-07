@@ -198,5 +198,33 @@
         }, 0);
       });
     });
+
+    // Bhulekh checks run on a separate local poller (bhulekh.uk.gov.in
+    // blocks this server's own network — see docs/BHULEKH_POLLER.md), so
+    // "queued" isn't a quick request/response like the two actions above.
+    // Poll for the real result instead of making the admin refresh by hand.
+    if (window.DUEDILIGENCE_STATUS_POLL_URL) {
+      var pollUrl = window.DUEDILIGENCE_STATUS_POLL_URL;
+      var pollCount = 0;
+      var pollInterval = window.setInterval(function () {
+        pollCount += 1;
+        fetchJson(pollUrl).then(function (data) {
+          if (data.status && data.status !== "queued") {
+            window.clearInterval(pollInterval);
+            window.location.reload();
+            return;
+          }
+          // Still queued after 3+ minutes — the poller may not be running.
+          if (pollCount === 18) {
+            var note = byId("bhulekh-queued-note");
+            if (note) {
+              note.textContent =
+                "Still queued after a few minutes — check that the local " +
+                "Bhulekh poller is actually running (docs/BHULEKH_POLLER.md).";
+            }
+          }
+        });
+      }, 10000);
+    }
   });
 })();

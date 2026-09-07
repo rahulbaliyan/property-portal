@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.http import HttpResponseForbidden, HttpResponseNotAllowed
+from django.http import HttpResponseForbidden, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
@@ -141,6 +141,11 @@ class TitleCheckReportAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.report_view),
                 name="duediligence_titlecheckreport_report",
             ),
+            path(
+                "<int:object_id>/status/",
+                self.admin_site.admin_view(self.report_status_view),
+                name="duediligence_titlecheckreport_status",
+            ),
         ]
         # Custom patterns first — otherwise Django's own <path:object_id>/
         # catch-all could swallow these before they're reached.
@@ -155,13 +160,35 @@ class TitleCheckReportAdmin(admin.ModelAdmin):
         if not self.has_change_permission(request, report):
             return HttpResponseForbidden()
 
-        services.run_check(report)
-        report.refresh_from_db()
+        # bhulekh.uk.gov.in blocks this server's own outbound network
+        # (confirmed: both Render and GitHub Actions time out reaching it,
+        # while a residential connection works fine) — so the actual check
+        # can't run here. Queue it instead; `poll_bhulekh_queue` running on
+        # a non-cloud connection picks it up and calls services.run_check()
+        # for real, writing the result straight back to this same row.
+        report.status = TitleCheckReport.Status.QUEUED
+        report.last_run_error = ""
+        report.save(update_fields=["status", "last_run_error", "updated_at"])
         self.message_user(
-            request, f"Check complete — risk level: {report.get_risk_level_display()}"
+            request,
+            "Bhulekh check queued. bhulekh.uk.gov.in blocks this server's "
+            "network directly, so a local checker (see docs/BHULEKH_POLLER.md) "
+            "picks this up from a non-cloud connection — the result appears "
+            "here within a minute or two once it does.",
         )
         return redirect(
-            reverse("admin:duediligence_titlecheckreport_report", args=[report.pk])
+            reverse("admin:duediligence_titlecheckreport_change", args=[report.pk])
+        )
+
+    def report_status_view(self, request, object_id):
+        """Tiny JSON endpoint the change-form page polls while a check is
+        queued, so it can auto-reload once the real result lands instead of
+        making the admin refresh by hand."""
+        report = get_object_or_404(TitleCheckReport, pk=object_id)
+        if not self.has_view_permission(request, report):
+            return HttpResponseForbidden()
+        return JsonResponse(
+            {"status": report.status, "risk_level": report.get_risk_level_display()}
         )
 
     def extract_deed_view(self, request, object_id):
