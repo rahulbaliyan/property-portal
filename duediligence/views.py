@@ -12,6 +12,28 @@ from django.shortcuts import render
 from . import bhulekh
 from .sources import load_non_bhulekh_sources
 
+# TEMPORARY — investigation-only, remove once the Bhulekh-IP-block
+# alternate-source question is resolved (see chat with the user,
+# 2026-09-07). Reports whether *this* server can reach a few candidate
+# Uttarakhand government hosts, since bhulekh.uk.gov.in blocks Render's
+# outbound IP but other gov domains may be hosted differently.
+def netcheck_view(request):
+    import requests
+
+    candidates = {
+        "bhulekh.uk.gov.in": "https://bhulekh.uk.gov.in/public/public_ror/Public_ROR.jsp",
+        "eregistrationukgov.in": "https://eregistrationukgov.in/",
+        "bor.uk.gov.in": "https://bor.uk.gov.in/",
+    }
+    results = {}
+    for name, url in candidates.items():
+        try:
+            resp = requests.get(url, timeout=10)
+            results[name] = {"status": resp.status_code, "ok": True}
+        except Exception as exc:  # noqa: BLE001 — diagnostic only
+            results[name] = {"ok": False, "error": f"{exc.__class__.__name__}: {exc}"}
+    return JsonResponse(results)
+
 CACHE_TTL_SECONDS = 3600  # politeness cache for the live gov-portal lookups,
 # distinct from cache_page's HTTP-response caching (that's reserved for
 # public GET views elsewhere in this project) — this caches upstream API

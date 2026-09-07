@@ -112,6 +112,11 @@ class TitleCheckReportAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom = [
             path(
+                "netcheck/",  # TEMPORARY — see views.netcheck_view docstring
+                self.admin_site.admin_view(views.netcheck_view),
+                name="duediligence_titlecheckreport_netcheck",
+            ),
+            path(
                 "ajax/districts/",
                 self.admin_site.admin_view(views.ajax_districts),
                 name="duediligence_titlecheckreport_ajax_districts",
