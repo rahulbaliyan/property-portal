@@ -234,3 +234,69 @@ def fetch_khata_report_html(
             f"{exc.__class__.__name__}: {exc}"
         ) from exc
     return response.text
+
+
+def fetch_check_data(khasra_numbers: list[str], location: dict) -> dict:
+    """The complete fetch phase for one TitleCheckReport's Bhulekh check,
+    pulled out as a single pure, JSON-serializable-in/out function.
+
+    This exists because bhulekh.uk.gov.in blocks common cloud-provider IP
+    ranges outright (confirmed against both Render and GitHub Actions —
+    see docs/BHULEKH_RELAY.md) — so this function has to be callable from
+    a completely different process on a completely different network than
+    the one running the rest of the app, with nothing but plain dicts
+    crossing that boundary. duediligence/services.py's run_check() calls
+    this in-process for ad-hoc local runs; the `relay_bhulekh_check`
+    management command calls it standalone (no Django, no database) and
+    POSTs the result to the live admin over HTTPS.
+
+    location must have exactly the keyword arguments
+    fetch_khata_report_html() takes (minus khata_number): district_name,
+    district_code, tehsil_name, tehsil_code, village_name, village_code,
+    pargana_name, pargana_code.
+
+    Never raises — every failure is folded into the returned dict:
+        {"session_error": "..."}   — couldn't even establish a session, or
+        {
+            "entries": [
+                {"khasra_number": "410", "status": "found", "khata_number": "222"},
+                {"khasra_number": "409", "status": "not_found"},
+                {"khasra_number": "408", "status": "error", "error": "..."},
+            ],
+            "khatas": {
+                "222": {"status": "ok", "raw_html": "..."},
+                "223": {"status": "error", "error": "..."},
+            },
+        }
+    """
+    try:
+        session = new_session()
+    except BhulekhError as exc:
+        return {"session_error": str(exc)}
+
+    entries = []
+    for khasra_number in khasra_numbers:
+        try:
+            match = lookup_khasra(session, khasra_number, location["village_code"])
+        except BhulekhError as exc:
+            entries.append({"khasra_number": khasra_number, "status": "error", "error": str(exc)})
+            continue
+        if match is None:
+            entries.append({"khasra_number": khasra_number, "status": "not_found"})
+            continue
+        entries.append(
+            {"khasra_number": khasra_number, "status": "found", "khata_number": match["khata_number"]}
+        )
+
+    # Dedup: several khasra numbers commonly resolve to the same khata —
+    # fetch each distinct one exactly once.
+    khata_numbers = sorted({e["khata_number"] for e in entries if e.get("status") == "found"})
+    khatas = {}
+    for khata_number in khata_numbers:
+        try:
+            raw_html = fetch_khata_report_html(session, khata_number=khata_number, **location)
+            khatas[khata_number] = {"status": "ok", "raw_html": raw_html}
+        except BhulekhError as exc:
+            khatas[khata_number] = {"status": "error", "error": str(exc)}
+
+    return {"entries": entries, "khatas": khatas}

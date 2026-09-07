@@ -22,46 +22,108 @@ _AREA_ENTRY_RE = re.compile(r"([^:;]+):\s*([\d.]+)\s*(वर्ग\s?मीट�
 
 
 def run_check(report: TitleCheckReport) -> None:
-    """The single entrypoint the admin view calls. Never raises out to the
-    caller — failures are recorded on the report itself (status, risk_level,
-    last_run_error) so they're visible in the UI rather than surfacing as
-    an unhandled exception."""
-    try:
-        session = bhulekh.new_session()
-    except bhulekh.BhulekhError as exc:
+    """The entrypoint for a same-process, same-network check: fetches live
+    from bhulekh.uk.gov.in itself, then persists. Used by the
+    `run_bhulekh_check` management command for ad-hoc runs from a machine
+    that both has direct database access AND isn't IP-blocked by Bhulekh
+    (see docs/BHULEKH_RELAY.md) — the live admin's "Run Bhulekh Check"
+    button does NOT call this directly, since Render itself is blocked;
+    it queues instead, and a relay elsewhere calls apply_remote_check_result().
+    Never raises out to the caller — failures are recorded on the report
+    itself (status, risk_level, last_run_error) so they're visible in the
+    UI rather than surfacing as an unhandled exception."""
+    khasra_numbers = list(
+        report.khasra_entries.order_by("order", "id").values_list("khasra_number", flat=True)
+    )
+    location = location_dict(report)
+    fetched = bhulekh.fetch_check_data(khasra_numbers, location)
+    _apply_fetched_result(report, fetched)
+
+
+def apply_remote_check_result(report: TitleCheckReport, fetched: dict) -> None:
+    """Entrypoint for the admin-creds relay flow (see admin.py's
+    submit_check_result_view / docs/BHULEKH_RELAY.md): the actual
+    bhulekh.uk.gov.in fetch already happened on a machine that isn't
+    IP-blocked, using bhulekh.fetch_check_data() directly — this parses
+    and persists that already-fetched result exactly as run_check() would
+    for a fetch done in this same process."""
+    _apply_fetched_result(report, fetched)
+
+
+def location_dict(report: TitleCheckReport) -> dict:
+    return {
+        "district_name": report.district_name,
+        "district_code": report.district_code,
+        "tehsil_name": report.tehsil_name,
+        "tehsil_code": report.tehsil_code,
+        "village_name": report.village_name,
+        "village_code": report.village_code,
+        "pargana_name": report.pargana_name,
+        "pargana_code": report.pargana_code,
+    }
+
+
+def _apply_fetched_result(report: TitleCheckReport, fetched: dict) -> None:
+    """Everything about a Bhulekh check that isn't the network fetch
+    itself: parsing, persistence, name/area matching, and risk scoring.
+    `fetched` is exactly bhulekh.fetch_check_data()'s return shape,
+    whether it was produced in this process (run_check) or handed in from
+    a relay running elsewhere (apply_remote_check_result)."""
+    if fetched.get("session_error"):
         report.status = TitleCheckReport.Status.FAILED
-        report.last_run_error = str(exc)
+        report.last_run_error = fetched["session_error"]
         report.risk_level = TitleCheckReport.RiskLevel.GRAY
         report.last_run_at = timezone.now()
         report.save()
         return
 
+    from .parsing import parse_mutation_entries
+
     entries = list(report.khasra_entries.order_by("order", "id"))
-    khata_lookups_by_number: dict[str, KhataLookup] = {}
-
+    # Entries by khasra number, in order — used as a queue below in case a
+    # report ever has more than one KhasraEntry for the same number.
+    entries_by_number: dict[str, list[KhasraEntry]] = {}
     for entry in entries:
-        try:
-            match = bhulekh.lookup_khasra(session, entry.khasra_number, report.village_code)
-        except bhulekh.BhulekhError as exc:
-            entry.lookup_status = KhasraEntry.LookupStatus.ERROR
-            entry.lookup_error_message = str(exc)
-            entry.save()
-            continue
+        entries_by_number.setdefault(entry.khasra_number, []).append(entry)
 
-        if match is None:
-            entry.lookup_status = KhasraEntry.LookupStatus.NOT_FOUND
-            entry.save()
-            continue
-
-        entry.lookup_status = KhasraEntry.LookupStatus.FOUND
-        entry.matched_khata_number = match["khata_number"]
-        entry.save()
-
-        khata_number = match["khata_number"]
-        if khata_number not in khata_lookups_by_number:
-            khata_lookups_by_number[khata_number] = _fetch_and_store_khata(
-                session, report, khata_number
+    khata_lookups_by_number: dict[str, KhataLookup] = {}
+    for khata_number, khata_data in fetched.get("khatas", {}).items():
+        if khata_data.get("status") == "ok":
+            khata_lookup = KhataLookup.objects.create(
+                report=report,
+                khata_number=khata_number,
+                fetch_status=KhataLookup.FetchStatus.OK,
+                raw_report_html=khata_data.get("raw_html", ""),
             )
+            parsed_entries = parse_mutation_entries(khata_data.get("raw_html", ""))
+            MutationEntry.objects.bulk_create(
+                MutationEntry(khata_lookup=khata_lookup, **_truncate_to_field_lengths(MutationEntry, fields))
+                for fields in parsed_entries
+            )
+        else:
+            khata_lookup = KhataLookup.objects.create(
+                report=report,
+                khata_number=khata_number,
+                fetch_status=KhataLookup.FetchStatus.ERROR,
+                fetch_error_message=khata_data.get("error", ""),
+            )
+        khata_lookups_by_number[khata_number] = khata_lookup
+
+    for entry_result in fetched.get("entries", []):
+        candidates = entries_by_number.get(entry_result.get("khasra_number"))
+        if not candidates:
+            continue
+        entry = candidates.pop(0)
+        status = entry_result.get("status")
+        if status == "error":
+            entry.lookup_status = KhasraEntry.LookupStatus.ERROR
+            entry.lookup_error_message = entry_result.get("error", "")
+        elif status == "not_found":
+            entry.lookup_status = KhasraEntry.LookupStatus.NOT_FOUND
+        elif status == "found":
+            entry.lookup_status = KhasraEntry.LookupStatus.FOUND
+            entry.matched_khata_number = entry_result.get("khata_number", "")
+        entry.save()
 
     # Second pass: now that every distinct khata has been fetched once,
     # point each khasra entry at its snapshot and compute match flags.
@@ -102,45 +164,6 @@ def run_check(report: TitleCheckReport) -> None:
     report.last_run_at = timezone.now()
     report.last_run_error = ""
     report.save()
-
-
-def _fetch_and_store_khata(session, report: TitleCheckReport, khata_number: str) -> KhataLookup:
-    try:
-        raw_html = bhulekh.fetch_khata_report_html(
-            session,
-            district_name=report.district_name,
-            district_code=report.district_code,
-            tehsil_name=report.tehsil_name,
-            tehsil_code=report.tehsil_code,
-            village_name=report.village_name,
-            village_code=report.village_code,
-            pargana_name=report.pargana_name,
-            pargana_code=report.pargana_code,
-            khata_number=khata_number,
-        )
-    except bhulekh.BhulekhError as exc:
-        return KhataLookup.objects.create(
-            report=report,
-            khata_number=khata_number,
-            fetch_status=KhataLookup.FetchStatus.ERROR,
-            fetch_error_message=str(exc),
-        )
-
-    khata_lookup = KhataLookup.objects.create(
-        report=report,
-        khata_number=khata_number,
-        fetch_status=KhataLookup.FetchStatus.OK,
-        raw_report_html=raw_html,
-    )
-
-    from .parsing import parse_mutation_entries
-
-    parsed_entries = parse_mutation_entries(raw_html)
-    MutationEntry.objects.bulk_create(
-        MutationEntry(khata_lookup=khata_lookup, **_truncate_to_field_lengths(MutationEntry, fields))
-        for fields in parsed_entries
-    )
-    return khata_lookup
 
 
 def _truncate_to_field_lengths(model, fields: dict) -> dict:

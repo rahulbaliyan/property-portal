@@ -1,3 +1,4 @@
+import json
 import shutil
 import tempfile
 from datetime import date
@@ -314,7 +315,7 @@ class AdminAccessControlTests(TestCase):
 class RunCheckQueueingTests(TestCase):
     """bhulekh.uk.gov.in blocks this server's own network (confirmed from
     both Render and GitHub Actions) — 'Run Bhulekh Check' can only queue
-    the report for poll_bhulekh_queue (running elsewhere) to pick up, never
+    the report for relay_bhulekh_check (running elsewhere) to pick up, never
     call services.run_check() itself."""
 
     def setUp(self):
@@ -370,52 +371,135 @@ class RunCheckQueueingTests(TestCase):
         self.assertContains(response, "DUEDILIGENCE_STATUS_POLL_URL")
 
 
-class PollBhulekhQueueCommandTests(TestCase):
+class BhulekhFetchCheckDataTests(TestCase):
+    """bhulekh.fetch_check_data() is the pure fetch-phase boundary shared
+    by services.run_check() (same-process) and relay_bhulekh_check (a
+    separate process with no Django/database access at all) — see
+    docs/BHULEKH_RELAY.md. Exercised directly here since it's the one
+    function both callers depend on having exactly this shape."""
+
+    LOCATION = {
+        "district_name": "देहरादून",
+        "district_code": "060",
+        "tehsil_name": "देहरादून",
+        "tehsil_code": "00304",
+        "village_name": "डांडालखौण्ड",
+        "village_code": "045187",
+        "pargana_name": "परवादून",
+        "pargana_code": "60042",
+    }
+
+    @patch("duediligence.bhulekh.new_session")
+    def test_session_error_short_circuits(self, mock_new_session):
+        mock_new_session.side_effect = bhulekh.BhulekhSessionError("down")
+        result = bhulekh.fetch_check_data(["410"], self.LOCATION)
+        self.assertEqual(result, {"session_error": "down"})
+
+    @patch("duediligence.bhulekh.fetch_khata_report_html")
+    @patch("duediligence.bhulekh.lookup_khasra")
+    @patch("duediligence.bhulekh.new_session")
+    def test_dedups_khata_fetch_across_khasras(self, mock_new_session, mock_lookup, mock_fetch):
+        mock_new_session.return_value = MagicMock()
+        mock_lookup.side_effect = [
+            {"khata_number": "222", "khasra_number": "410"},
+            {"khata_number": "222", "khasra_number": "409"},
+        ]
+        mock_fetch.return_value = REAL_ENTRY_HTML
+
+        result = bhulekh.fetch_check_data(["410", "409"], self.LOCATION)
+
+        self.assertEqual(mock_fetch.call_count, 1)
+        self.assertEqual(
+            result["entries"],
+            [
+                {"khasra_number": "410", "status": "found", "khata_number": "222"},
+                {"khasra_number": "409", "status": "found", "khata_number": "222"},
+            ],
+        )
+        self.assertEqual(result["khatas"]["222"], {"status": "ok", "raw_html": REAL_ENTRY_HTML})
+
+    @patch("duediligence.bhulekh.lookup_khasra")
+    @patch("duediligence.bhulekh.new_session")
+    def test_not_found_and_per_khasra_error_are_distinct(self, mock_new_session, mock_lookup):
+        mock_new_session.return_value = MagicMock()
+        mock_lookup.side_effect = [None, bhulekh.BhulekhRequestError("boom")]
+
+        result = bhulekh.fetch_check_data(["410", "409"], self.LOCATION)
+
+        self.assertEqual(result["entries"][0], {"khasra_number": "410", "status": "not_found"})
+        self.assertEqual(
+            result["entries"][1], {"khasra_number": "409", "status": "error", "error": "boom"}
+        )
+        self.assertEqual(result["khatas"], {})  # nothing "found", nothing to fetch
+
+
+class RunCheckRelayTests(TestCase):
+    """The admin-creds relay flow: queued_reports_view (what
+    relay_bhulekh_check polls) and submit_check_result_view (what it
+    posts its result to) — see docs/BHULEKH_RELAY.md."""
+
     def setUp(self):
-        self.queued = TitleCheckReport.objects.create(
-            village_code="045187", status=TitleCheckReport.Status.QUEUED
+        self.client = Client()
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
         )
-        self.draft = TitleCheckReport.objects.create(
-            village_code="045187", status=TitleCheckReport.Status.DRAFT
+        self.client.login(username="staffer", password="pw")
+        self.report = TitleCheckReport.objects.create(
+            village_code="045187",
+            district_name="देहरादून",
+            status=TitleCheckReport.Status.QUEUED,
         )
+        KhasraEntry.objects.create(report=self.report, khasra_number="410", order=0)
+        TitleCheckReport.objects.create(village_code="045187", status=TitleCheckReport.Status.DRAFT)
 
-    @patch("duediligence.management.commands.poll_bhulekh_queue.services.run_check")
-    def test_once_processes_only_queued_reports(self, mock_run_check):
-        from io import StringIO
+    def test_queued_reports_view_lists_only_queued_with_expected_shape(self):
+        url = reverse("admin:duediligence_titlecheckreport_queue")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["reports"]
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["id"], self.report.pk)
+        self.assertEqual(data[0]["khasra_numbers"], ["410"])
+        self.assertEqual(data[0]["location"]["district_name"], "देहरादून")
+        self.assertEqual(data[0]["location"]["village_code"], "045187")
 
-        from django.core.management import call_command
+    def test_queued_reports_view_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:duediligence_titlecheckreport_queue")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
 
-        call_command("poll_bhulekh_queue", "--once", stdout=StringIO())
-
-        mock_run_check.assert_called_once_with(self.queued)
-
-    @patch("duediligence.management.commands.poll_bhulekh_queue.services.run_check")
-    def test_once_with_empty_queue_returns_immediately(self, mock_run_check):
-        from io import StringIO
-
-        from django.core.management import call_command
-
-        self.queued.status = TitleCheckReport.Status.DRAFT
-        self.queued.save()
-
-        call_command("poll_bhulekh_queue", "--once", stdout=StringIO())
-
-        mock_run_check.assert_not_called()
-
-    @patch("duediligence.management.commands.poll_bhulekh_queue.services.run_check")
-    def test_one_bad_report_does_not_stop_the_others(self, mock_run_check):
-        from io import StringIO
-
-        from django.core.management import call_command
-
-        TitleCheckReport.objects.create(
-            village_code="045187", status=TitleCheckReport.Status.QUEUED
+    def test_submit_check_result_view_applies_payload(self):
+        payload = {
+            "entries": [{"khasra_number": "410", "status": "not_found"}],
+            "khatas": {},
+        }
+        url = reverse(
+            "admin:duediligence_titlecheckreport_submit_check_result", args=[self.report.pk]
         )
-        mock_run_check.side_effect = [RuntimeError("boom"), None]
+        response = self.client.post(
+            url, data=json.dumps(payload), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.status, TitleCheckReport.Status.COMPLETE)
+        entry = self.report.khasra_entries.get()
+        self.assertEqual(entry.lookup_status, KhasraEntry.LookupStatus.NOT_FOUND)
 
-        call_command("poll_bhulekh_queue", "--once", stdout=StringIO(), stderr=StringIO())
+    def test_submit_check_result_view_rejects_invalid_json(self):
+        url = reverse(
+            "admin:duediligence_titlecheckreport_submit_check_result", args=[self.report.pk]
+        )
+        response = self.client.post(url, data="not json", content_type="application/json")
+        self.assertEqual(response.status_code, 400)
 
-        self.assertEqual(mock_run_check.call_count, 2)
+    def test_submit_check_result_view_requires_staff(self):
+        self.client.logout()
+        url = reverse(
+            "admin:duediligence_titlecheckreport_submit_check_result", args=[self.report.pk]
+        )
+        response = self.client.post(url, data="{}", content_type="application/json")
+        self.assertEqual(response.status_code, 302)
 
 
 class DeedAiClientTests(TestCase):

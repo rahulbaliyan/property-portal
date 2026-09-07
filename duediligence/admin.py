@@ -1,5 +1,12 @@
+import json
+
 from django.contrib import admin
-from django.http import HttpResponseForbidden, HttpResponseNotAllowed, JsonResponse
+from django.http import (
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    HttpResponseNotAllowed,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
@@ -146,6 +153,16 @@ class TitleCheckReportAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.report_status_view),
                 name="duediligence_titlecheckreport_status",
             ),
+            path(
+                "queue/",
+                self.admin_site.admin_view(self.queued_reports_view),
+                name="duediligence_titlecheckreport_queue",
+            ),
+            path(
+                "<int:object_id>/run-check/submit/",
+                self.admin_site.admin_view(self.submit_check_result_view),
+                name="duediligence_titlecheckreport_submit_check_result",
+            ),
         ]
         # Custom patterns first — otherwise Django's own <path:object_id>/
         # catch-all could swallow these before they're reached.
@@ -163,16 +180,18 @@ class TitleCheckReportAdmin(admin.ModelAdmin):
         # bhulekh.uk.gov.in blocks this server's own outbound network
         # (confirmed: both Render and GitHub Actions time out reaching it,
         # while a residential connection works fine) — so the actual check
-        # can't run here. Queue it instead; `poll_bhulekh_queue` running on
-        # a non-cloud connection picks it up and calls services.run_check()
-        # for real, writing the result straight back to this same row.
+        # can't run here. Queue it instead; `relay_bhulekh_check` running
+        # on a non-cloud connection (authenticated with an admin login,
+        # not a database credential — see docs/BHULEKH_RELAY.md) picks
+        # this up, fetches from Bhulekh itself, and posts the raw result
+        # back to submit_check_result_view below.
         report.status = TitleCheckReport.Status.QUEUED
         report.last_run_error = ""
         report.save(update_fields=["status", "last_run_error", "updated_at"])
         self.message_user(
             request,
             "Bhulekh check queued. bhulekh.uk.gov.in blocks this server's "
-            "network directly, so a local checker (see docs/BHULEKH_POLLER.md) "
+            "network directly, so a local relay (see docs/BHULEKH_RELAY.md) "
             "picks this up from a non-cloud connection — the result appears "
             "here within a minute or two once it does.",
         )
@@ -187,6 +206,56 @@ class TitleCheckReportAdmin(admin.ModelAdmin):
         report = get_object_or_404(TitleCheckReport, pk=object_id)
         if not self.has_view_permission(request, report):
             return HttpResponseForbidden()
+        return JsonResponse(
+            {"status": report.status, "risk_level": report.get_risk_level_display()}
+        )
+
+    def queued_reports_view(self, request):
+        """What `relay_bhulekh_check` (see docs/BHULEKH_RELAY.md) polls:
+        every report currently queued for a Bhulekh check, with exactly
+        the fields bhulekh.fetch_check_data() needs — nothing else. This
+        is deliberately list-level (not tied to one object_id), same as
+        the ajax/districts etc. endpoints above, so admin_view()'s
+        is_staff check is the only gate — there's no single object to
+        run has_view_permission against, and nothing here is sensitive
+        beyond what any staff user already sees in the report list."""
+        if request.method != "GET":
+            return HttpResponseNotAllowed(["GET"])
+        reports = TitleCheckReport.objects.filter(status=TitleCheckReport.Status.QUEUED)
+        data = [
+            {
+                "id": report.pk,
+                "khasra_numbers": list(
+                    report.khasra_entries.order_by("order", "id").values_list(
+                        "khasra_number", flat=True
+                    )
+                ),
+                "location": services.location_dict(report),
+            }
+            for report in reports
+        ]
+        return JsonResponse({"reports": data})
+
+    def submit_check_result_view(self, request, object_id):
+        """Where `relay_bhulekh_check` posts back what it fetched from
+        Bhulekh for one report — see queued_reports_view and
+        docs/BHULEKH_RELAY.md. The relay never touches the database or
+        parses anything itself; this view does exactly what run_check()
+        would with the same fetched data, via the same shared code path."""
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        report = get_object_or_404(TitleCheckReport, pk=object_id)
+        if not self.has_change_permission(request, report):
+            return HttpResponseForbidden()
+        try:
+            fetched = json.loads(request.body)
+        except ValueError:  # covers JSONDecodeError and UnicodeDecodeError
+            return HttpResponseBadRequest("Request body must be valid JSON.")
+        if not isinstance(fetched, dict):
+            return HttpResponseBadRequest("Request body must be a JSON object.")
+
+        services.apply_remote_check_result(report, fetched)
+        report.refresh_from_db()
         return JsonResponse(
             {"status": report.status, "risk_level": report.get_risk_level_display()}
         )

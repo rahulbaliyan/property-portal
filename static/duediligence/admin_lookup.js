@@ -200,7 +200,7 @@
     });
 
     // Bhulekh checks run on a separate local poller (bhulekh.uk.gov.in
-    // blocks this server's own network — see docs/BHULEKH_POLLER.md), so
+    // blocks this server's own network — see docs/BHULEKH_RELAY.md), so
     // "queued" isn't a quick request/response like the two actions above.
     // Poll for the real result instead of making the admin refresh by hand.
     if (window.DUEDILIGENCE_STATUS_POLL_URL) {
@@ -220,7 +220,7 @@
             if (note) {
               note.textContent =
                 "Still queued after a few minutes — check that the local " +
-                "Bhulekh poller is actually running (docs/BHULEKH_POLLER.md).";
+                "Bhulekh relay is actually running (docs/BHULEKH_RELAY.md).";
             }
           }
         });

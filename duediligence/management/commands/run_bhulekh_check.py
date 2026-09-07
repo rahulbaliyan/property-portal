@@ -7,12 +7,13 @@ from duediligence.models import TitleCheckReport
 class Command(BaseCommand):
     help = (
         "Run the Bhulekh cross-check for one specific TitleCheckReport, "
-        "right now, regardless of its queue status. For the normal "
-        "workflow — the live admin's 'Run Bhulekh Check' button queues a "
-        "report and 'poll_bhulekh_queue' (see docs/BHULEKH_POLLER.md) "
-        "picks it up automatically — you don't need this command at all. "
-        "It's here for one-off ad-hoc runs (e.g. re-running a single "
-        "report without waiting for the poller's next cycle)."
+        "right now, regardless of its queue status. This needs BOTH direct "
+        "database access AND a connection bhulekh.uk.gov.in doesn't block "
+        "(see docs/BHULEKH_RELAY.md) — for the normal day-to-day workflow, "
+        "the live admin's 'Run Bhulekh Check' button queues a report and "
+        "'relay_bhulekh_check' (admin login only, no database access "
+        "needed) picks it up automatically. This command is here for "
+        "ad-hoc runs when you already have both of those anyway."
     )
 
     def add_arguments(self, parser):
