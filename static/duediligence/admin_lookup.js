@@ -180,12 +180,22 @@
         notice.style.fontWeight = "bold";
         notice.textContent = actionMessages[label];
         btn.closest(".submit-row").insertAdjacentElement("afterend", notice);
-        document.querySelectorAll(
-          'input[type="submit"][value="Extract with AI"], input[type="submit"][value="Run Bhulekh Check"]'
-        ).forEach(function (b) {
-          b.disabled = true;
-        });
-        btn.value = "Working…";
+        // Disabling the clicked button itself is deferred to the next tick.
+        // Confirmed firsthand: disabling a submit button synchronously
+        // inside its own "click" handler makes Chromium silently drop that
+        // click's default action (the formaction submit) entirely — the
+        // button visibly goes to "Working…" and stays disabled forever,
+        // but the request is never actually sent. Queuing this with
+        // setTimeout lets the browser dispatch the real form submission
+        // first; only after that do we grey the buttons out.
+        window.setTimeout(function () {
+          document.querySelectorAll(
+            'input[type="submit"][value="Extract with AI"], input[type="submit"][value="Run Bhulekh Check"]'
+          ).forEach(function (b) {
+            b.disabled = true;
+          });
+          btn.value = "Working…";
+        }, 0);
       });
     });
   });
