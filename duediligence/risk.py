@@ -12,9 +12,16 @@ from .models import KhasraEntry, MutationEntry, TitleCheckReport
 def compute_risk_level(report: TitleCheckReport) -> str:
     entries = list(report.khasra_entries.all())
 
-    # 1. Red — a confirmed mismatch on data we actually retrieved.
+    # 1. Red — a confirmed mismatch on data we actually retrieved (area,
+    #    seller/buyer name, consideration amount, or deed date).
     for entry in entries:
-        if entry.area_match is False or entry.seller_match is False or entry.buyer_match is False:
+        if (
+            entry.area_match is False
+            or entry.seller_match is False
+            or entry.buyer_match is False
+            or entry.amount_match is False
+            or entry.date_match is False
+        ):
             return TitleCheckReport.RiskLevel.RED
 
     found_entries = [e for e in entries if e.lookup_status == KhasraEntry.LookupStatus.FOUND]
@@ -40,6 +47,7 @@ def compute_risk_level(report: TitleCheckReport) -> str:
     ).exists()
     nothing_confirmed = all(
         e.area_match is None and e.seller_match is None and e.buyer_match is None
+        and e.amount_match is None and e.date_match is None
         for e in found_entries
     )
 

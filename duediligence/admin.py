@@ -25,14 +25,22 @@ class KhasraEntryInline(admin.TabularInline):
         "matched_khata_number",
         "area_match",
         "seller_match",
+        "seller_match_score",
         "buyer_match",
+        "buyer_match_score",
+        "amount_match",
+        "date_match",
     )
     readonly_fields = (
         "lookup_status",
         "matched_khata_number",
         "area_match",
         "seller_match",
+        "seller_match_score",
         "buyer_match",
+        "buyer_match_score",
+        "amount_match",
+        "date_match",
     )
     extra = 2
 

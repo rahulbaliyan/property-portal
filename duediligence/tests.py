@@ -158,11 +158,40 @@ class RiskLevelTests(TestCase):
         )
         self.assertEqual(risk.compute_risk_level(report), TitleCheckReport.RiskLevel.RED)
 
+    def test_red_on_amount_mismatch(self):
+        # A wrong consideration amount is a stamp-duty-undervaluation
+        # signal — just as serious as a name/area mismatch, same RED tier.
+        report = self._report()
+        KhasraEntry.objects.create(
+            report=report, khasra_number="1", lookup_status=KhasraEntry.LookupStatus.FOUND,
+            seller_match=True, buyer_match=True, area_match=True, amount_match=False,
+        )
+        self.assertEqual(risk.compute_risk_level(report), TitleCheckReport.RiskLevel.RED)
+
+    def test_red_on_date_mismatch(self):
+        report = self._report()
+        KhasraEntry.objects.create(
+            report=report, khasra_number="1", lookup_status=KhasraEntry.LookupStatus.FOUND,
+            seller_match=True, buyer_match=True, area_match=True, date_match=False,
+        )
+        self.assertEqual(risk.compute_risk_level(report), TitleCheckReport.RiskLevel.RED)
+
     def test_green_on_clean_confirmed_match(self):
         report = self._report()
         KhasraEntry.objects.create(
             report=report, khasra_number="1", lookup_status=KhasraEntry.LookupStatus.FOUND,
             area_match=True, seller_match=True, buyer_match=True,
+        )
+        self.assertEqual(risk.compute_risk_level(report), TitleCheckReport.RiskLevel.GREEN)
+
+    def test_not_yellow_when_only_amount_and_date_are_confirmable(self):
+        # nothing_confirmed must consider amount_match/date_match too — a
+        # report where only those two were comparable (area/name weren't)
+        # shouldn't fall through to Yellow as if nothing was confirmed.
+        report = self._report()
+        KhasraEntry.objects.create(
+            report=report, khasra_number="1", lookup_status=KhasraEntry.LookupStatus.FOUND,
+            amount_match=True, date_match=True,
         )
         self.assertEqual(risk.compute_risk_level(report), TitleCheckReport.RiskLevel.GREEN)
 
@@ -184,16 +213,53 @@ class NameMatchingTests(TestCase):
     )
 
     def test_same_person_different_transcription_matches(self):
-        self.assertTrue(services._names_match(self.AI_EXTRACTED_SELLER, self.BHULEKH_SELLER))
+        matched, score = services._names_match(self.AI_EXTRACTED_SELLER, self.BHULEKH_SELLER)
+        self.assertTrue(matched)
+        # Real case this was calibrated against: honorific + nukta variant +
+        # ष/श swap all present at once still scores 0.97 — see
+        # NAME_MATCH_THRESHOLD's docstring in services.py.
+        self.assertGreaterEqual(score, 85)
+
+    def test_exact_match_scores_100(self):
+        matched, score = services._names_match(self.BHULEKH_SELLER, self.BHULEKH_SELLER)
+        self.assertTrue(matched)
+        self.assertEqual(score, 100)
 
     def test_genuinely_different_name_does_not_match(self):
-        self.assertFalse(
-            services._names_match(self.AI_EXTRACTED_SELLER, "सुरेश कुमार पुत्र रमेश चन्द्र निवासी दिल्ली")
+        matched, score = services._names_match(
+            self.AI_EXTRACTED_SELLER, "सुरेश कुमार पुत्र रमेश चन्द्र निवासी दिल्ली"
         )
+        self.assertFalse(matched)
+        self.assertLess(score, 85)
 
     def test_blank_either_side_is_not_comparable(self):
-        self.assertIsNone(services._names_match("", self.BHULEKH_SELLER))
-        self.assertIsNone(services._names_match(self.AI_EXTRACTED_SELLER, ""))
+        self.assertEqual(services._names_match("", self.BHULEKH_SELLER), (None, None))
+        self.assertEqual(services._names_match(self.AI_EXTRACTED_SELLER, ""), (None, None))
+
+
+class AmountDateMatchingTests(TestCase):
+    def test_amount_match(self):
+        self.assertTrue(services._amount_match(Decimal("1800000"), "1800000"))
+
+    def test_amount_mismatch(self):
+        self.assertFalse(services._amount_match(Decimal("1800000"), "1750000"))
+
+    def test_amount_not_comparable_when_either_side_missing(self):
+        self.assertIsNone(services._amount_match(None, "1800000"))
+        self.assertIsNone(services._amount_match(Decimal("1800000"), ""))
+
+    def test_amount_not_comparable_on_unparseable_text(self):
+        self.assertIsNone(services._amount_match(Decimal("1800000"), "not-a-number"))
+
+    def test_date_match(self):
+        self.assertTrue(services._date_match(date(2025, 6, 2), date(2025, 6, 2)))
+
+    def test_date_mismatch(self):
+        self.assertFalse(services._date_match(date(2025, 6, 2), date(2025, 6, 3)))
+
+    def test_date_not_comparable_when_either_side_missing(self):
+        self.assertIsNone(services._date_match(None, date(2025, 6, 2)))
+        self.assertIsNone(services._date_match(date(2025, 6, 2), None))
 
 
 class RunCheckServiceTests(TestCase):
@@ -219,6 +285,8 @@ class RunCheckServiceTests(TestCase):
             buyer_name="राजीव मित्तल",
             deed_area_value=Decimal("94.23"),
             deed_area_unit=TitleCheckReport.DeedAreaUnit.SQM,
+            consideration_amount=Decimal("1800000"),
+            deed_date=date(2025, 6, 2),
         )
         KhasraEntry.objects.create(report=report, khasra_number="410", order=0)
         KhasraEntry.objects.create(report=report, khasra_number="409", order=1)
@@ -234,9 +302,59 @@ class RunCheckServiceTests(TestCase):
         for entry in entries:
             self.assertEqual(entry.lookup_status, KhasraEntry.LookupStatus.FOUND)
             self.assertTrue(entry.seller_match)
+            self.assertEqual(entry.seller_match_score, 100)
             self.assertTrue(entry.buyer_match)
+            self.assertEqual(entry.buyer_match_score, 100)
             self.assertTrue(entry.area_match)  # 46 + 48.23 = 94.23, matches declared total
+            self.assertTrue(entry.amount_match)  # 1800000 == 1800000
+            self.assertTrue(entry.date_match)  # 2025-06-02 == 2025-06-02
         self.assertEqual(report.risk_level, TitleCheckReport.RiskLevel.GREEN)
+
+    @patch("duediligence.services.bhulekh.fetch_khata_report_html")
+    @patch("duediligence.services.bhulekh.lookup_khasra")
+    @patch("duediligence.services.bhulekh.new_session")
+    def test_amount_mismatch_marks_red(self, mock_new_session, mock_lookup, mock_fetch):
+        mock_new_session.return_value = MagicMock()
+        mock_lookup.return_value = {"khata_number": "222", "khasra_number": "410", "unique_gata_id": "x"}
+        mock_fetch.return_value = REAL_ENTRY_HTML
+
+        report = TitleCheckReport.objects.create(
+            village_code="045187",
+            seller_name="पुरण सिंह राणा",
+            buyer_name="राजीव मित्तल",
+            consideration_amount=Decimal("1750000"),  # deed says 1800000
+        )
+        KhasraEntry.objects.create(report=report, khasra_number="410", order=0)
+
+        services.run_check(report)
+        report.refresh_from_db()
+
+        entry = report.khasra_entries.get()
+        self.assertFalse(entry.amount_match)
+        self.assertEqual(report.risk_level, TitleCheckReport.RiskLevel.RED)
+
+    @patch("duediligence.services.bhulekh.fetch_khata_report_html")
+    @patch("duediligence.services.bhulekh.lookup_khasra")
+    @patch("duediligence.services.bhulekh.new_session")
+    def test_date_mismatch_marks_red(self, mock_new_session, mock_lookup, mock_fetch):
+        mock_new_session.return_value = MagicMock()
+        mock_lookup.return_value = {"khata_number": "222", "khasra_number": "410", "unique_gata_id": "x"}
+        mock_fetch.return_value = REAL_ENTRY_HTML
+
+        report = TitleCheckReport.objects.create(
+            village_code="045187",
+            seller_name="पुरण सिंह राणा",
+            buyer_name="राजीव मित्तल",
+            deed_date=date(2025, 6, 3),  # deed says 2025-06-02
+        )
+        KhasraEntry.objects.create(report=report, khasra_number="410", order=0)
+
+        services.run_check(report)
+        report.refresh_from_db()
+
+        entry = report.khasra_entries.get()
+        self.assertFalse(entry.date_match)
+        self.assertEqual(report.risk_level, TitleCheckReport.RiskLevel.RED)
 
     @patch("duediligence.services.bhulekh.new_session")
     def test_session_failure_marks_report_failed(self, mock_new_session):

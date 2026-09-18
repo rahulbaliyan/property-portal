@@ -60,6 +60,8 @@
       <th>Area</th>
       <th>Seller</th>
       <th>Buyer</th>
+      <th>Amount</th>
+      <th>Date</th>
     </tr>
   </thead>
   <tbody>
@@ -86,10 +88,26 @@
           {% if entry.seller_match is True %}&#10003;
           {% elif entry.seller_match is False %}&#10007;
           {% else %}—{% endif %}
+          {% if entry.seller_match_score is not None and entry.seller_match_score < 100 %}
+            <br><small>{{ entry.seller_match_score }}% similar</small>
+          {% endif %}
         </td>
         <td>
           {% if entry.buyer_match is True %}&#10003;
           {% elif entry.buyer_match is False %}&#10007;
+          {% else %}—{% endif %}
+          {% if entry.buyer_match_score is not None and entry.buyer_match_score < 100 %}
+            <br><small>{{ entry.buyer_match_score }}% similar</small>
+          {% endif %}
+        </td>
+        <td>
+          {% if entry.amount_match is True %}&#10003;
+          {% elif entry.amount_match is False %}&#10007;
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if entry.date_match is True %}&#10003;
+          {% elif entry.date_match is False %}&#10007;
           {% else %}—{% endif %}
         </td>
       </tr>

@@ -147,8 +147,10 @@ def _apply_fetched_result(report: TitleCheckReport, fetched: dict) -> None:
             entry.latest_mutation_deed_date = latest.deed_date
             entry.latest_mutation_raw_text = latest.raw_text
 
-            entry.seller_match = _names_match(report.seller_name, latest.seller_name)
-            entry.buyer_match = _names_match(report.buyer_name, latest.buyer_name)
+            entry.seller_match, entry.seller_match_score = _names_match(report.seller_name, latest.seller_name)
+            entry.buyer_match, entry.buyer_match_score = _names_match(report.buyer_name, latest.buyer_name)
+            entry.amount_match = _amount_match(report.consideration_amount, latest.deed_amount_text)
+            entry.date_match = _date_match(report.deed_date, latest.deed_date)
 
             area = _parse_area_sqm_for_khasra(latest.area_text, entry.khasra_number)
             if area is not None:
@@ -233,23 +235,25 @@ def _name_core(normalized_name: str) -> str:
     return _ADDRESS_MARKER_RE.split(normalized_name)[0].strip().rstrip(",").strip()
 
 
-def _names_match(declared: str, found: str) -> bool | None:
+def _names_match(declared: str, found: str) -> tuple[bool | None, int | None]:
     """Known v1 limitation: Bhulekh always returns names in Devanagari.
     If the admin types the declared seller/buyer name in Roman script
     (e.g. copied from an English-language PAN card) instead of the
     Devanagari spelling used on the deed itself, this will never match —
     there's no transliteration here. Type the name as it appears on the
-    Hindi-language deed for a meaningful comparison."""
+    Hindi-language deed for a meaningful comparison.
+
+    Returns (matched, score_0_to_100) — the score lets a reviewer see how
+    close a mismatch was without re-reading the raw mutation text, e.g. a
+    62%-similar near-miss vs. a 5%-similar unrelated name."""
     declared_norm, found_norm = _normalize_name(declared), _normalize_name(found)
     if not declared_norm or not found_norm:
-        return None
-    if declared_norm == found_norm:
-        return True
-    if declared_norm in found_norm or found_norm in declared_norm:
-        return True
+        return None, None
+    if declared_norm == found_norm or declared_norm in found_norm or found_norm in declared_norm:
+        return True, 100
     declared_core, found_core = _name_core(declared_norm), _name_core(found_norm)
     ratio = difflib.SequenceMatcher(None, declared_core, found_core).ratio()
-    return ratio >= NAME_MATCH_THRESHOLD
+    return ratio >= NAME_MATCH_THRESHOLD, round(ratio * 100)
 
 
 def _parse_area_sqm_for_khasra(area_text: str, khasra_number: str) -> Decimal | None:
@@ -265,6 +269,26 @@ def _parse_area_sqm_for_khasra(area_text: str, khasra_number: str) -> Decimal | 
             except InvalidOperation:
                 return None
     return None
+
+
+def _amount_match(declared: Decimal | None, found_text: str) -> bool | None:
+    """Exact comparison, not tolerance-banded like area: the consideration
+    amount printed on the deed and the बैनामा figure in the mutation record
+    describe the same transaction and should read identically — any
+    difference (not rounding) is itself the signal worth surfacing."""
+    if declared is None or not found_text:
+        return None
+    try:
+        found = Decimal(found_text)
+    except InvalidOperation:
+        return None
+    return declared == found
+
+
+def _date_match(declared: date | None, found: date | None) -> bool | None:
+    if declared is None or found is None:
+        return None
+    return declared == found
 
 
 def _apply_area_match(report: TitleCheckReport, entries: list[KhasraEntry], matched_areas: list[Decimal]) -> None:

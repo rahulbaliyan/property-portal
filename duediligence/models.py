@@ -180,6 +180,11 @@ class KhasraEntry(models.Model):
     area_match = models.BooleanField(null=True, blank=True)
     seller_match = models.BooleanField(null=True, blank=True)
     buyer_match = models.BooleanField(null=True, blank=True)
+    amount_match = models.BooleanField(null=True, blank=True)
+    date_match = models.BooleanField(null=True, blank=True)
+    # 0-100, not a 0-1 float, so templates can print "{{ x }}%" directly.
+    seller_match_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    buyer_match_score = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["order", "id"]
