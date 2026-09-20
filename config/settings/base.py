@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "properties",
     "inquiries",
     "duediligence",
+    "investment",
 ]
 
 MIDDLEWARE = [
