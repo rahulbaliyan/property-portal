@@ -12,10 +12,36 @@ overwriting it — the same reasoning duediligence has for keeping a
 KhataLookup row per check rather than one mutable snapshot.
 """
 
+from pathlib import Path
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from properties.models import CLOUDINARY_IMAGE_BACKEND, Property
+
+# Scanned deeds/khasras/NOCs arrive as PDFs or phone-camera photos —
+# nothing else. Deliberately narrow allow-list rather than accepting any
+# file type, since these are uploaded, untrusted documents (see Phase 19's
+# "treat uploaded property documents as untrusted input").
+ALLOWED_DOCUMENT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+# Larger than properties.models.MAX_IMAGE_UPLOAD_BYTES (10 MB) — a
+# multi-page scanned deed PDF runs bigger than a single phone photo.
+MAX_DOCUMENT_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+def validate_document_file(file):
+    extension = Path(file.name).suffix.lower()
+    if extension not in ALLOWED_DOCUMENT_EXTENSIONS:
+        raise ValidationError(
+            f"Unsupported file type '{extension}' — allowed: "
+            f"{', '.join(sorted(ALLOWED_DOCUMENT_EXTENSIONS))}."
+        )
+    if file.size > MAX_DOCUMENT_UPLOAD_BYTES:
+        raise ValidationError(
+            f"File is too large ({file.size / 1024 / 1024:.1f} MB) — "
+            f"the limit is {MAX_DOCUMENT_UPLOAD_BYTES // 1024 // 1024} MB."
+        )
 
 
 def property_document_storage():
@@ -92,7 +118,11 @@ class PropertyDocument(models.Model):
         AnalysisRun, on_delete=models.SET_NULL, null=True, blank=True, related_name="documents"
     )
     document_type = models.CharField(max_length=25, choices=DocumentType.choices)
-    file = models.FileField(upload_to="investment/documents/%Y/%m/", storage=property_document_storage)
+    file = models.FileField(
+        upload_to="investment/documents/%Y/%m/",
+        storage=property_document_storage,
+        validators=[validate_document_file],
+    )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )

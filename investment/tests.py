@@ -1,19 +1,28 @@
 """Phase 1 tests: the domain model skeleton itself — creation, key
 relationships, and the constraints that matter most (UNKNOWN must be a
-real, distinct status; one check/factor per category per parent). No
-service/engine logic exists yet, so there's nothing to test beyond the
-schema being sound and admin-registered — later phases add behavior tests
-alongside the code that computes these values.
+real, distinct status; one check/factor per category per parent).
+
+Phase 2 tests: document upload validation (services.py + models.py's
+validate_document_file), checksum computation, duplicate detection, and
+the admin wiring that fixed a real Phase-1 bug (inline-added
+PropertyDocument/PropertyComparable rows had no way to get
+property_listing populated, since it's a second FK the inline form never
+shows).
 """
 
+import hashlib
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.urls import reverse
 
 from properties.models import Property
 
+from . import services
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -23,6 +32,7 @@ from .models import (
     PropertyComparable,
     PropertyDocument,
     PropertyRisk,
+    validate_document_file,
     PropertyScore,
     PropertyValuation,
     ScoringConfiguration,
@@ -259,3 +269,214 @@ class AdminRegistrationTests(TestCase):
     def test_property_document_changelist_loads(self):
         response = self.client.get("/admin/investment/propertydocument/")
         self.assertEqual(response.status_code, 200)
+
+
+def _pdf_file(name="deed.pdf", content=b"%PDF-1.4 fake content"):
+    return SimpleUploadedFile(name, content, content_type="application/pdf")
+
+
+class DocumentFileValidationTests(TestCase):
+    def test_disallowed_extension_rejected(self):
+        with self.assertRaises(ValidationError):
+            validate_document_file(SimpleUploadedFile("deed.exe", b"x", content_type="application/octet-stream"))
+
+    def test_allowed_extensions_pass(self):
+        for name in ("deed.pdf", "deed.PDF", "scan.jpg", "scan.jpeg", "scan.png"):
+            validate_document_file(SimpleUploadedFile(name, b"x"))  # must not raise
+
+    def test_oversized_file_rejected(self):
+        from investment.models import MAX_DOCUMENT_UPLOAD_BYTES
+
+        oversized = SimpleUploadedFile("deed.pdf", b"x" * (MAX_DOCUMENT_UPLOAD_BYTES + 1))
+        with self.assertRaises(ValidationError):
+            validate_document_file(oversized)
+
+
+class ChecksumAndDuplicateDetectionTests(TestCase):
+    def test_checksum_matches_known_sha256(self):
+        content = b"deterministic content for checksum test"
+        file = SimpleUploadedFile("deed.pdf", content)
+        self.assertEqual(services.compute_checksum(file), hashlib.sha256(content).hexdigest())
+
+    def test_checksum_leaves_file_readable_afterwards(self):
+        content = b"content still readable after checksum"
+        file = SimpleUploadedFile("deed.pdf", content)
+        services.compute_checksum(file)
+        self.assertEqual(file.read(), content)
+
+    def test_no_duplicate_when_checksum_blank(self):
+        prop = _make_property()
+        self.assertIsNone(services.find_duplicate_document(prop, ""))
+
+    def test_finds_duplicate_by_checksum_within_same_property(self):
+        prop = _make_property()
+        existing = PropertyDocument.objects.create(
+            property_listing=prop,
+            document_type=PropertyDocument.DocumentType.SALE_DEED,
+            file=_pdf_file(),
+            checksum="abc123",
+        )
+        duplicate = services.find_duplicate_document(prop, "abc123")
+        self.assertEqual(duplicate, existing)
+
+    def test_same_checksum_on_a_different_property_is_not_a_duplicate(self):
+        prop_a = _make_property(title="A")
+        prop_b = _make_property(title="B")
+        PropertyDocument.objects.create(
+            property_listing=prop_a,
+            document_type=PropertyDocument.DocumentType.SALE_DEED,
+            file=_pdf_file(),
+            checksum="abc123",
+        )
+        self.assertIsNone(services.find_duplicate_document(prop_b, "abc123"))
+
+    def test_excludes_self_when_checking_for_duplicates(self):
+        prop = _make_property()
+        doc = PropertyDocument.objects.create(
+            property_listing=prop,
+            document_type=PropertyDocument.DocumentType.SALE_DEED,
+            file=_pdf_file(),
+            checksum="abc123",
+        )
+        self.assertIsNone(services.find_duplicate_document(prop, "abc123", exclude_pk=doc.pk))
+
+
+class PropertyDocumentAdminUploadTests(TestCase):
+    """Covers the Phase 2 admin wiring: checksum/uploaded_by computed on
+    save, and a duplicate upload surfaced as a warning (never blocked)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.property = _make_property()
+
+    def test_add_via_admin_sets_checksum_and_uploaded_by(self):
+        url = reverse("admin:investment_propertydocument_add")
+        response = self.client.post(
+            url,
+            {
+                "property_listing": self.property.pk,
+                "document_type": PropertyDocument.DocumentType.SALE_DEED,
+                "file": _pdf_file(),
+                "verification_status": PropertyDocument.VerificationStatus.UPLOADED,
+                "metadata": "{}",
+                "analysis-0-TOTAL_FORMS": "0",
+                "analysis-0-INITIAL_FORMS": "0",
+                "analysis-TOTAL_FORMS": "0",
+                "analysis-INITIAL_FORMS": "0",
+                "analysis-MIN_NUM_FORMS": "0",
+                "analysis-MAX_NUM_FORMS": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 302, response.context["adminform"].form.errors if response.status_code == 200 else None)
+        document = PropertyDocument.objects.get(property_listing=self.property)
+        self.assertTrue(document.checksum)
+        self.assertEqual(document.uploaded_by, self.user)
+
+    def test_duplicate_upload_warns_without_blocking(self):
+        existing_checksum = hashlib.sha256(b"same content").hexdigest()
+        PropertyDocument.objects.create(
+            property_listing=self.property,
+            document_type=PropertyDocument.DocumentType.SALE_DEED,
+            file=_pdf_file("first.pdf", b"same content"),
+            checksum=existing_checksum,
+        )
+
+        url = reverse("admin:investment_propertydocument_add")
+        response = self.client.post(
+            url,
+            {
+                "property_listing": self.property.pk,
+                "document_type": PropertyDocument.DocumentType.KHASRA,
+                "file": _pdf_file("second.pdf", b"same content"),
+                "verification_status": PropertyDocument.VerificationStatus.UPLOADED,
+                "metadata": "{}",
+                "analysis-0-TOTAL_FORMS": "0",
+                "analysis-0-INITIAL_FORMS": "0",
+                "analysis-TOTAL_FORMS": "0",
+                "analysis-INITIAL_FORMS": "0",
+                "analysis-MIN_NUM_FORMS": "0",
+                "analysis-MAX_NUM_FORMS": "1",
+            },
+            follow=True,
+        )
+        messages = [str(m) for m in response.context["messages"]]
+        self.assertTrue(any("identical content" in m for m in messages))
+        self.assertEqual(PropertyDocument.objects.filter(property_listing=self.property).count(), 2)
+
+
+class AnalysisRunInlineDocumentTests(TestCase):
+    """Regression test for the Phase-1 bug fixed in Phase 2: adding a
+    PropertyDocument/PropertyComparable via AnalysisRun's inline must
+    auto-fill property_listing from the parent run, since the inline form
+    never shows that field."""
+
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.property = _make_property()
+        self.run = AnalysisRun.objects.create(property_listing=self.property)
+
+    def _inline_management_form(self, prefix, total=0, initial=0):
+        return {
+            f"{prefix}-TOTAL_FORMS": str(total),
+            f"{prefix}-INITIAL_FORMS": str(initial),
+            f"{prefix}-MIN_NUM_FORMS": "0",
+            f"{prefix}-MAX_NUM_FORMS": "1000",
+        }
+
+    def _base_payload(self):
+        payload = {"property_listing": self.property.pk, "status": AnalysisRun.Status.PENDING}
+        for prefix in (
+            "due_diligence_checks",
+            "risks",
+            "verification_items",
+            "documents",
+            "comparables",
+            "valuation",
+            "score",
+            "override_logs",
+        ):
+            payload.update(self._inline_management_form(prefix))
+        return payload
+
+    def test_document_added_via_inline_gets_property_listing(self):
+        payload = self._base_payload()
+        payload.update(
+            {
+                "documents-TOTAL_FORMS": "1",
+                "documents-0-document_type": PropertyDocument.DocumentType.SALE_DEED,
+                "documents-0-file": _pdf_file(),
+                "documents-0-verification_status": PropertyDocument.VerificationStatus.UPLOADED,
+            }
+        )
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.post(url, payload)
+        self.assertEqual(
+            response.status_code, 302, response.context["errors"] if response.status_code == 200 else None
+        )
+        document = PropertyDocument.objects.get(analysis_run=self.run)
+        self.assertEqual(document.property_listing, self.property)
+        self.assertTrue(document.checksum)
+
+    def test_comparable_added_via_inline_gets_property_listing(self):
+        payload = self._base_payload()
+        payload.update(
+            {
+                "comparables-TOTAL_FORMS": "1",
+                "comparables-0-area_value": "120",
+                "comparables-0-area_unit": Property.AreaUnit.GAJ,
+                "comparables-0-price": "2500000",
+            }
+        )
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.post(url, payload)
+        self.assertEqual(
+            response.status_code, 302, response.context["errors"] if response.status_code == 200 else None
+        )
+        comparable = PropertyComparable.objects.get(analysis_run=self.run)
+        self.assertEqual(comparable.property_listing, self.property)

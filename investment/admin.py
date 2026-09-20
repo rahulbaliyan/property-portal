@@ -6,8 +6,9 @@ scoring engine, document extraction pipeline), mirroring how duediligence's
 admin grew incrementally alongside its services module rather than upfront.
 """
 
-from django.contrib import admin
+from django.contrib import admin, messages
 
+from . import services
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -23,6 +24,34 @@ from .models import (
     ScoringFactor,
     VerificationItem,
 )
+
+
+def _finalize_document_upload(document, request):
+    """Shared by PropertyDocumentAdmin.save_model and AnalysisRunAdmin's
+    inline formset save — checksum and uploaded_by must be set the same
+    way regardless of which admin screen the upload came through."""
+    changed = False
+    if not document.uploaded_by_id:
+        document.uploaded_by = request.user
+        changed = True
+    if document.file and not document.checksum:
+        document.checksum = services.compute_checksum(document.file)
+        changed = True
+    if changed:
+        document.save()
+    return services.find_duplicate_document(
+        document.property_listing, document.checksum, exclude_pk=document.pk
+    )
+
+
+def _warn_if_duplicate(admin_instance, request, document, duplicate):
+    if duplicate:
+        admin_instance.message_user(
+            request,
+            f'Note: "{document}" has identical content to document #{duplicate.pk} '
+            "already on this property — check whether this is an accidental duplicate.",
+            level=messages.WARNING,
+        )
 
 
 class DueDiligenceCheckInline(admin.TabularInline):
@@ -50,6 +79,11 @@ class PropertyDocumentInline(admin.TabularInline):
 class PropertyComparableInline(admin.TabularInline):
     model = PropertyComparable
     extra = 0
+    # property_listing is filled in from the parent run in save_formset()
+    # below (it's a required field, but a second FK the inline form has
+    # no natural way to populate) — excluded here so the form doesn't ask
+    # for it directly.
+    exclude = ("property_listing",)
 
 
 class PropertyScoreInline(admin.StackedInline):
@@ -88,6 +122,25 @@ class AnalysisRunAdmin(admin.ModelAdmin):
         FieldOverrideLogInline,
     ]
 
+    def save_formset(self, request, form, formset, change):
+        """PropertyDocument and PropertyComparable both require
+        property_listing (a separate FK from analysis_run), which the
+        inline form never shows — added rows need it copied from the
+        parent run's own property_listing, or they'd fail to save."""
+        instances = formset.save(commit=False)
+        for obj in formset.deleted_objects:
+            obj.delete()
+        for obj in instances:
+            if hasattr(obj, "property_listing_id") and not obj.property_listing_id:
+                obj.property_listing = form.instance.property_listing
+            obj.save()
+        formset.save_m2m()
+
+        if formset.model is PropertyDocument:
+            for obj in instances:
+                duplicate = _finalize_document_upload(obj, request)
+                _warn_if_duplicate(self, request, obj, duplicate)
+
 
 class DocumentAnalysisInline(admin.StackedInline):
     model = DocumentAnalysis
@@ -101,6 +154,11 @@ class PropertyDocumentAdmin(admin.ModelAdmin):
     search_fields = ("property_listing__title",)
     autocomplete_fields = ["property_listing"]
     inlines = [DocumentAnalysisInline]
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        duplicate = _finalize_document_upload(obj, request)
+        _warn_if_duplicate(self, request, obj, duplicate)
 
 
 @admin.register(Evidence)
