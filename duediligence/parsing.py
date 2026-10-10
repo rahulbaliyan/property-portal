@@ -69,20 +69,30 @@ _ENTRY_START_RE = re.compile(r"(?=(?:वाद\s*सं[.0]|मि\.\s*नं?[.
 _CASE_NUMBER_RE = re.compile(r"(?:वाद\s*सं[.0]?|मि\.\s*नं?[.0]?)\s*([\d]+/[\d]+)")
 _ORDER_DATE_RE = re.compile(r"वाद\s*सं[.0]?\s*[\d]+/[\d]+/(\d{1,2}\.\d{1,2}\.\d{4})")
 _KHATA_RE = re.compile(r"खाता\s*सं\.?\s*\(?\s*(\d+)")
+# A sub-divided khasra number is sometimes written as "53 क" (digits,
+# space, a single Devanagari sub-plot letter) rather than run together
+# like "409" — the optional trailing group captures that case without
+# swallowing the following रकबा keyword (confirmed against a real 2025
+# entry for Khasra 53क, Khata 8, village जगातखाना).
 _KHASRA_AREA_RE = re.compile(
-    r"खसरा\s*न[ंं0.]*\s*([^\s,]+?)\s*रकबा\s*([\d.]+)\s*(वर्ग\s?मीटर|वर्ग\s?मी\.?|है[0.]*|हे[0.]*|एकड़)?"
+    r"खसरा\s*न[ंं0.]*\s*([^\s,]+(?:\s+[क-ह])?)\s*रकबा\s*([\d.]+)\s*(वर्ग\s?मीटर|वर्ग\s?मी\.?|है[0.]*|हे[0.]*|एकड़)?"
 )
-_SELLER_RE = re.compile(r"विक्रेता\s+(.+?)\s+का\s*नाम\s*खारिज")
+# "विक्रेता" (seller, singular) vs "विक्रेतागण" (sellers, plural — used
+# when multiple co-owners sell together, confirmed against the same real
+# 2025 entry above) — (?:गण)? covers both without a space in between.
+_SELLER_RE = re.compile(r"विक्रेता(?:गण)?\s+(.+?)\s+का\s*नाम\s*खारिज")
 # Negative lookbehind is required: "क्रेता" (buyer) is a literal substring
 # of "विक्रेता" (seller) — without it, this matches inside "विक्रेता" itself
 # and captures everything from the seller's name onward instead of just
 # the buyer's.
 _BUYER_RE = re.compile(r"(?<!वि)क्रेता\s+(.+?)\s+का\s*नाम\s*दर्ज")
 # Amount/date formatting drifts across decades of entries — try the modern
-# "बैनामा <amount>/-<date>" form first, then older "बै <date> <amount>/-"
+# "बैनामा <amount>/-<date>" form first, then "बै0 <amount>/- दि. <date>"
+# (confirmed against a real 2025 entry), then older "बै <date> <amount>/-"
 # variants. First match wins; if none match, both fields stay blank.
 _DEED_AMOUNT_DATE_PATTERNS = [
     re.compile(r"बैनामा\s*([\d,]+)\s*/-\s*(\d{1,2}\.\d{1,2}\.\d{4})"),
+    re.compile(r"बै[0०]?\s*([\d,]+)\s*/-\s*दि\.?\s*(\d{1,2}\.\d{1,2}\.\d{4})"),
     re.compile(r"बै\.?\s*(\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4})\s*/?\s*([\d,]+)\s*/-"),
 ]
 

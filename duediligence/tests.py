@@ -26,6 +26,30 @@ REAL_ENTRY_HTML = (
     "1800000/-02.06.2025</span></td>"
 )
 
+# Real fetched fragment (Khata 8, Khasra 53क, village जगातखाना, Dehradun,
+# 2026-10-10) — surfaced three real parsing gaps the worked example above
+# never exercised: a sub-divided khasra number written with a space before
+# its letter suffix ("53 क" vs "410"), a plural "विक्रेतागण" (sellers) for
+# a multi-seller entry instead of singular "विक्रेता", and a "बै0
+# <amount>/- दि. <date>" amount/date phrasing distinct from both existing
+# patterns. Also hectares ("है0") rather than वर्गमीटर for area — see
+# services.py's _parse_area_sqm_for_khasra.
+REAL_ENTRY_HTML_PLURAL_SELLERS = (
+    '<td style="font-size: 12px;" class="order-text"><span>'
+    "वाद सं. 8294/2025/30-10-2025 के अनुसार खाता सं. 08 खसरा नं0 53 क रकबा 0.0108 "
+    "है0 अर्थात 108.70 वर्गमीटर लगानी परता से विक्रेतागण 1. श्री बलदेव विरमानी उर्फ "
+    "बलदेव राज विरमानी पुत्र स्व0 श्री एम0एल0 विरमानी निवासी 21, कालीदास रोड़, "
+    "देहरादून 2. श्री सुनील आहूजा पुत्र श्री सी0पी0 आहूजा निवासी राजपुर रोड़, "
+    "देहरादून द्वारा मुख्तारेआम श्री अमर नाथ आहूजा पुत्र श्री पूरन चन्द आहूजा निवासी "
+    "30 ए. राजपुर रोड़, देहरादून 3. श्री लोवेश कालरा पुत्र श्री अश्वनी कालरा निवासी "
+    "ई0सी0 रोड़, देहरादून द्वारा मुख्तारेआम श्री अश्वनी कालरा पुत्र श्री सत्य पाल कालरा "
+    "निवासी 19/38, ई0सी0 रोड़, देहरादून 4. श्री अंशु सेखरी पुत्र श्री विनोद सेखरी "
+    "निवासी 1, रेसकोर्स, देहरादून का नाम खारिज होकर क्रेता श्री जय कुमार शर्मा पुत्र "
+    "श्री हेम चन्द्र शर्मा निवासी 858-ए, शास्त्री बाग, गुरूकुल रोड़, खेड़ा खुर्द पो0ओ0 "
+    "खेड़ा कलां, जिला नोर्थ वेस्ट दिल्ली, दिल्ली का नाम दर्ज होवे, बै0 20,55,000/- "
+    "दि. 03.06.2025 आ.अपर तहसीलदार देहरादून</span></td>"
+)
+
 
 class ParsingTests(TestCase):
     def test_real_worked_example(self):
@@ -65,6 +89,20 @@ class ParsingTests(TestCase):
         )
         entries = parsing.parse_mutation_entries(html)
         self.assertFalse(entries[0]["is_litigation_flagged"])
+
+    def test_plural_sellers_sub_divided_khasra_and_alternate_amount_format(self):
+        entries = parsing.parse_mutation_entries(REAL_ENTRY_HTML_PLURAL_SELLERS)
+        self.assertEqual(len(entries), 1)
+        entry = entries[0]
+        self.assertEqual(entry["case_number"], "8294/2025")
+        self.assertEqual(entry["khata_number_in_entry"], "08")
+        self.assertEqual(entry["khasra_numbers_in_entry"], "53 क")
+        self.assertIn("53 क: 0.0108", entry["area_text"])
+        self.assertIn("श्री बलदेव विरमानी", entry["seller_name"])
+        self.assertIn("श्री अंशु सेखरी", entry["seller_name"])
+        self.assertIn("श्री जय कुमार शर्मा", entry["buyer_name"])
+        self.assertEqual(entry["deed_amount_text"], "2055000")
+        self.assertEqual(entry["deed_date"], date(2025, 6, 3))
 
 
 class BhulekhClientTests(TestCase):
@@ -260,6 +298,27 @@ class AmountDateMatchingTests(TestCase):
     def test_date_not_comparable_when_either_side_missing(self):
         self.assertIsNone(services._date_match(None, date(2025, 6, 2)))
         self.assertIsNone(services._date_match(date(2025, 6, 2), None))
+
+
+class AreaUnitConversionTests(TestCase):
+    """Confirmed against a real entry: Khasra 53क's area was recorded as
+    '0.0108 है0' (hectares), not वर्गमीटर — the only unit this previously
+    recognized. Hectares convert exactly (1 ha = 10,000 sqm, no regional
+    ambiguity); other units stay deliberately unconverted."""
+
+    def test_hectares_converted_to_sqm(self):
+        area = services._parse_area_sqm_for_khasra("53 क: 0.0108 है0", "53 क")
+        self.assertEqual(area, Decimal("108.0"))
+
+    def test_sqm_unaffected(self):
+        area = services._parse_area_sqm_for_khasra("410: 46 वर्गमीटर", "410")
+        self.assertEqual(area, Decimal("46"))
+
+    def test_unrecognized_unit_stays_unconverted_to_none(self):
+        # No bigha/nali/gaj/acre conversion — avoids a wrong silent
+        # conversion for units that vary regionally.
+        area = services._parse_area_sqm_for_khasra("410: 2 बीघा", "410")
+        self.assertIsNone(area)
 
 
 class RunCheckServiceTests(TestCase):

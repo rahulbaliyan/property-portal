@@ -25,7 +25,7 @@ AREA_MATCH_TOLERANCE = Decimal("0.02")  # ±2%
 # storage-agnostic AND the AI-call-specific cap for this field today.
 AI_ANALYSIS_MAX_BYTES = 5 * 1024 * 1024
 
-_AREA_ENTRY_RE = re.compile(r"([^:;]+):\s*([\d.]+)\s*(वर्ग\s?मीटर|वर्ग\s?मी\.?)")
+_AREA_ENTRY_RE = re.compile(r"([^:;]+):\s*([\d.]+)\s*(वर्ग\s?मीटर|वर्ग\s?मी\.?|है[0.]*|हे[0.]*)")
 
 
 def run_check(report: TitleCheckReport) -> None:
@@ -263,18 +263,29 @@ def _names_match(declared: str, found: str) -> tuple[bool | None, int | None]:
     return ratio >= NAME_MATCH_THRESHOLD, round(ratio * 100)
 
 
+_SQM_PER_HECTARE = Decimal("10000")
+
+
 def _parse_area_sqm_for_khasra(area_text: str, khasra_number: str) -> Decimal | None:
-    """area_text looks like '410: 46 वर्गमीटर; 409: 48.23 वर्गमीटर'. Only
-    parses वर्गमीटर (sq. metres) values — v1 deliberately does not attempt
-    unit conversion from hectares/other units, to avoid a wrong silent
-    conversion producing false confidence."""
+    """area_text looks like '410: 46 वर्गमीटर; 409: 48.23 वर्गमीटर' or,
+    confirmed against a real 2025 entry, '53 क: 0.0108 है0' (hectares).
+    Hectares are converted to sq. metres (an exact, unambiguous SI
+    conversion — 1 ha = 10,000 sqm, no regional variance) since
+    AREA_MATCH_TOLERANCE already absorbs the resulting rounding gap
+    against the deed's own more-precise sqm figure. Other units (bigha,
+    nali, gaj, acre — all regionally ambiguous) remain deliberately
+    unconverted, to avoid a wrong silent conversion producing false
+    confidence."""
     for match in _AREA_ENTRY_RE.finditer(area_text or ""):
-        khasra_token, value_str, _unit = match.groups()
+        khasra_token, value_str, unit = match.groups()
         if khasra_token.strip() == khasra_number.strip():
             try:
-                return Decimal(value_str)
+                value = Decimal(value_str)
             except InvalidOperation:
                 return None
+            if unit.startswith(("है", "हे")):
+                return value * _SQM_PER_HECTARE
+            return value
     return None
 
 
