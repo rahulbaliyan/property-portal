@@ -24,6 +24,9 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
     path("properties/", include("properties.urls")),
+    # Staff-only (see investment/views.py) — a plain, non-admin-chrome
+    # property analysis report page.
+    path("investment/", include("investment.urls")),
     # Root-level, matching the brief's exact requested URL shape
     # (/properties-in-dehradun/, not nested under /properties/).
     path(

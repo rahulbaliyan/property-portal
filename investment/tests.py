@@ -49,6 +49,7 @@ from . import (
     document_ai,
     due_diligence,
     location_intelligence,
+    pipeline,
     risk_engine,
     scoring,
     services,
@@ -2093,3 +2094,123 @@ class AuditTrailTests(TestCase):
         url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
         response = self.client.get(url)
         self.assertContains(response, "DueDiligenceCheck.status")
+
+
+class RunFullAnalysisPipelineTests(TestCase):
+    def test_runs_all_five_steps(self):
+        prop = _make_property(price=Decimal("2000000"), area_value=Decimal("100"), area_unit=Property.AreaUnit.SQM)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        PropertyComparable.objects.create(
+            property_listing=prop, analysis_run=run,
+            price=Decimal("1800000"), area_value=Decimal("90"), area_unit=Property.AreaUnit.SQM,
+        )
+
+        pipeline.run_full_analysis(run)
+
+        self.assertTrue(DueDiligenceCheck.objects.filter(analysis_run=run).exists())  # due diligence
+        self.assertTrue(PropertyRisk.objects.filter(analysis_run=run).exists())  # risks (at least data-quality)
+        self.assertTrue(PropertyValuation.objects.filter(analysis_run=run, comparable_count=1).exists())  # valuation
+        score = PropertyScore.objects.get(analysis_run=run)  # score
+        self.assertIsNotNone(score.overall_score)
+
+    def test_never_touches_location_or_ai_summary(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        pipeline.run_full_analysis(run)
+        self.assertFalse(DueDiligenceCheck.objects.filter(analysis_run=run, category="location").exclude(
+            status=DueDiligenceCheck.Status.UNKNOWN
+        ).exists())
+        self.assertFalse(run.ai_summary)
+
+    def test_idempotent_on_rerun(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        pipeline.run_full_analysis(run)
+        pipeline.run_full_analysis(run)
+        self.assertEqual(PropertyScore.objects.filter(analysis_run=run).count(), 1)
+        self.assertEqual(PropertyValuation.objects.filter(analysis_run=run).count(), 1)
+
+
+class RunFullAnalysisAdminViewTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_requires_post(self):
+        url = reverse("admin:investment_analysisrun_run_full_analysis", args=[self.run.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+
+    def test_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_analysisrun_run_full_analysis", args=[self.run.pk])
+        self.assertEqual(self.client.post(url).status_code, 302)
+
+    def test_post_runs_and_redirects(self):
+        url = reverse("admin:investment_analysisrun_run_full_analysis", args=[self.run.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+        self.assertTrue(PropertyScore.objects.filter(analysis_run=self.run).exists())
+
+    def test_change_form_shows_button_and_staff_report_link(self):
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "Run Full Analysis")
+        self.assertContains(response, reverse("investment:report", args=[self.run.pk]))
+
+
+class StaffReportPageTests(TestCase):
+    def setUp(self):
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_anonymous_redirected_to_login(self):
+        url = reverse("investment:report", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login/", response.url)
+
+    def test_non_staff_redirected(self):
+        get_user_model().objects.create_user(username="nobody", password="pw", is_staff=False)
+        self.client.login(username="nobody", password="pw")
+        url = reverse("investment:report", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+
+    def test_staff_can_view(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        url = reverse("investment:report", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"Property Analysis Report #{self.run.pk}")
+        # Not Django admin chrome — this is the plain staff page.
+        self.assertNotContains(response, "id=\"django-admin\"")
+
+    def test_post_rejected(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        url = reverse("investment:report", args=[self.run.pk])
+        self.assertEqual(self.client.post(url).status_code, 405)
+
+    def test_404_for_missing_run(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        url = reverse("investment:report", args=[999999])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_page_reflects_computed_score_and_manual_checklist(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        scoring.compute_score(self.run)
+
+        url = reverse("investment:report", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, f"{self.run.score.overall_score}/100")

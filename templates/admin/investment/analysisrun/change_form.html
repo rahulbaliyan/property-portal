@@ -10,23 +10,32 @@
         that browsers silently rewrite. See duediligence's own
         change_form.html, where this was confirmed happening for real.
       {% endcomment %}
-      <input type="submit" formaction="{% url 'admin:investment_analysisrun_run_due_diligence' original.pk %}" formmethod="post" formnovalidate value="Run Due Diligence" class="default">
-      <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_risks' original.pk %}" formmethod="post" formnovalidate value="Identify Risks" class="default">
-      <input type="submit" formaction="{% url 'admin:investment_analysisrun_check_data_quality' original.pk %}" formmethod="post" formnovalidate value="Check Data Quality" class="default">
-      <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_valuation' original.pk %}" formmethod="post" formnovalidate value="Compute Valuation" class="default">
+      <input type="submit" formaction="{% url 'admin:investment_analysisrun_run_full_analysis' original.pk %}" formmethod="post" formnovalidate value="Run Full Analysis" class="default" style="font-weight:bold;">
       <input type="submit" formaction="{% url 'admin:investment_analysisrun_analyze_location' original.pk %}" formmethod="post" formnovalidate value="Analyze Location" class="default">
-      <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_score' original.pk %}" formmethod="post" formnovalidate value="Compute Score" class="default">
       <input type="submit" formaction="{% url 'admin:investment_analysisrun_generate_summary' original.pk %}" formmethod="post" formnovalidate value="Generate AI Summary" class="default">
-      <a class="button" href="{% url 'admin:investment_analysisrun_report' original.pk %}">View Report</a>
+      <a class="button" href="{% url 'admin:investment_analysisrun_report' original.pk %}">View Report (admin)</a>
+      <a class="button" href="{% url 'investment:report' original.pk %}" target="_blank" rel="noopener">View Report (staff page)</a>
     </div>
     <p class="help">
       Save any changes below first — each action uses the data as currently
-      saved, not unsaved edits on this page. Suggested order: add Comparable
-      Properties below, then Run Due Diligence (pulls in the latest Bhulekh
-      title check for Registry/Ownership/Litigation) &rarr; Identify Risks
-      &rarr; Compute Valuation &rarr; Compute Score &rarr; Generate AI
-      Summary &rarr; View Report.
+      saved, not unsaved edits on this page. "Run Full Analysis" runs due
+      diligence, risk identification, data-quality checks, valuation, and
+      scoring together (pulls in the latest Bhulekh title check for
+      Registry/Ownership/Litigation along the way) — add Comparable
+      Properties below first if you have any. "Analyze Location" and
+      "Generate AI Summary" are separate, slower steps (external API
+      calls) run on their own.
     </p>
+    <details class="mb-2">
+      <summary>Individual steps (if you don't want to run them all together)</summary>
+      <div class="submit-row">
+        <input type="submit" formaction="{% url 'admin:investment_analysisrun_run_due_diligence' original.pk %}" formmethod="post" formnovalidate value="Run Due Diligence" class="default">
+        <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_risks' original.pk %}" formmethod="post" formnovalidate value="Identify Risks" class="default">
+        <input type="submit" formaction="{% url 'admin:investment_analysisrun_check_data_quality' original.pk %}" formmethod="post" formnovalidate value="Check Data Quality" class="default">
+        <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_valuation' original.pk %}" formmethod="post" formnovalidate value="Compute Valuation" class="default">
+        <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_score' original.pk %}" formmethod="post" formnovalidate value="Compute Score" class="default">
+      </div>
+    </details>
   {% else %}
     <p class="help">Save this analysis run first to unlock "Run Due Diligence".</p>
   {% endif %}

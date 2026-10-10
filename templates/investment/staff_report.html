@@ -1,0 +1,150 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Property Analysis Report #{{ run.pk }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <style>
+    body { background: #f7f7f5; }
+    .report-card { background: #fff; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .status-pass { color: #1f8a4c; font-weight: 600; }
+    .status-fail { color: #b3261e; font-weight: 700; }
+    .status-warning { color: #d9730d; font-weight: 600; }
+    .status-other { color: #666; }
+    .severity-high, .severity-critical { border-left: 3px solid #b3261e; }
+    .severity-medium { border-left: 3px solid #d9730d; }
+    .severity-low, .severity-unknown { border-left: 3px solid #999; }
+  </style>
+</head>
+<body>
+<div class="container py-4" style="max-width: 900px;">
+
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h3 mb-1">Property Analysis Report #{{ run.pk }}</h1>
+      {% if property %}
+        <p class="text-muted mb-0">{{ property.title }} &middot; {{ property.get_property_type_display }} &middot; {{ property.get_region_display }}</p>
+      {% endif %}
+    </div>
+    <a href="{% url 'admin:investment_analysisrun_change' run.pk %}" class="btn btn-sm btn-outline-secondary">Edit in admin</a>
+  </div>
+
+  <div class="report-card">
+    <h2 class="h5">Score</h2>
+    {% if score and score.overall_score is not None %}
+      <p class="fs-3 mb-1"><strong>{{ score.overall_score }}/100</strong>
+        <span class="fs-6 text-muted">
+          &middot; Confidence
+          {% if score.confidence_score >= 70 %}<span class="status-pass">{{ score.confidence_score }}/100</span>
+          {% elif score.confidence_score >= 40 %}<span class="status-warning">{{ score.confidence_score }}/100</span>
+          {% else %}<span class="status-fail">{{ score.confidence_score }}/100</span>{% endif %}
+        </span>
+      </p>
+      {% if score.missing_data_penalty_applied %}
+        <p class="text-warning small">Some categories have no automated data yet (scored neutral) — see Confidence above.</p>
+      {% endif %}
+      <pre class="small text-muted mb-0" style="white-space:pre-wrap;">{{ score.explanation }}</pre>
+    {% else %}
+      <p class="text-muted mb-0">Not yet computed.</p>
+    {% endif %}
+  </div>
+
+  {% if run.ai_summary.executive_summary %}
+    <div class="report-card">
+      <h2 class="h5">AI Analyst Summary</h2>
+      <p class="small text-muted">Generated from the structured data on this page only — not a buy/don't-buy recommendation. Review before relying on it.</p>
+      <p>{{ run.ai_summary.executive_summary }}</p>
+      {% if run.ai_summary.key_positives %}
+        <h3 class="h6 mt-3">Key Positives</h3>
+        <ul class="small">{% for item in run.ai_summary.key_positives %}<li>{{ item }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if run.ai_summary.key_risks %}
+        <h3 class="h6 mt-3">Key Risks</h3>
+        <ul class="small">{% for item in run.ai_summary.key_risks %}<li>{{ item }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if run.ai_summary.verification_checklist %}
+        <h3 class="h6 mt-3">Verification Checklist</h3>
+        <ul class="small">{% for item in run.ai_summary.verification_checklist %}<li>{{ item }}</li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% with v=run.valuation %}
+    {% if v and v.comparable_count %}
+      <div class="report-card">
+        <h2 class="h5">Valuation</h2>
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal">Comparables used</th><td>{{ v.comparable_count }}</td></tr>
+          <tr><th class="text-muted fw-normal">Median</th><td>&#8377;{{ v.median_comparable_price_per_unit }}/sqm</td></tr>
+          <tr><th class="text-muted fw-normal">Range</th><td>&#8377;{{ v.lower_range_price_per_unit }} &ndash; &#8377;{{ v.upper_range_price_per_unit }}/sqm</td></tr>
+          {% if v.premium_discount_percent is not None %}
+            <tr><th class="text-muted fw-normal">{% if v.premium_discount_percent >= 0 %}Premium{% else %}Discount{% endif %} vs. median</th><td>{{ v.premium_discount_percent }}%</td></tr>
+          {% endif %}
+        </table>
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="report-card">
+    <h2 class="h5">Due-Diligence Checklist</h2>
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Category</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for check in checks %}
+          <tr>
+            <td>{{ check.get_category_display }}</td>
+            <td class="{% if check.status == 'pass' %}status-pass{% elif check.status == 'fail' %}status-fail{% elif check.status == 'warning' %}status-warning{% else %}status-other{% endif %}">
+              {{ check.get_status_display }}
+            </td>
+            <td class="small text-muted">{{ check.notes|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3" class="text-muted">No due-diligence checks yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="report-card">
+    <h2 class="h5">Risks</h2>
+    {% for risk in risks %}
+      <div class="ps-3 mb-2 severity-{{ risk.severity }}">
+        <strong>{{ risk.get_severity_display }} &mdash; {{ risk.get_category_display }}</strong><br>
+        <span class="small">{{ risk.reason }}</span>
+        {% if risk.recommended_verification %}<br><em class="small text-muted">{{ risk.recommended_verification }}</em>{% endif %}
+      </div>
+    {% empty %}
+      <p class="text-muted mb-0">No risks identified yet.</p>
+    {% endfor %}
+  </div>
+
+  <div class="report-card">
+    <h2 class="h5">Evidence</h2>
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Claim</th><th>Type</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for item in evidence %}
+          <tr>
+            <td class="small">{{ item.claim }}</td>
+            <td class="small">{{ item.get_source_type_display }}</td>
+            <td class="small">{{ item.get_verification_status_display }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3" class="text-muted">No evidence recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include "duediligence/_manual_checklist.html" %}
+
+  <p class="text-muted small mt-4">
+    This report reflects only what this system has automated or been given — it is not a complete
+    title or investment verdict, and the final decision always remains with you.
+  </p>
+</div>
+</body>
+</html>

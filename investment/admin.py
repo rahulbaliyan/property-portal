@@ -11,7 +11,18 @@ from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 
-from . import ai_analyst, data_quality, due_diligence, location_intelligence, reports, risk_engine, scoring, services, valuation
+from . import (
+    ai_analyst,
+    data_quality,
+    due_diligence,
+    location_intelligence,
+    pipeline,
+    reports,
+    risk_engine,
+    scoring,
+    services,
+    valuation,
+)
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -251,6 +262,11 @@ class AnalysisRunAdmin(admin.ModelAdmin):
                 name="investment_analysisrun_check_data_quality",
             ),
             path(
+                "<int:object_id>/run-full-analysis/",
+                self.admin_site.admin_view(self.run_full_analysis_view),
+                name="investment_analysisrun_run_full_analysis",
+            ),
+            path(
                 "<int:object_id>/generate-summary/",
                 self.admin_site.admin_view(self.generate_summary_view),
                 name="investment_analysisrun_generate_summary",
@@ -340,6 +356,22 @@ class AnalysisRunAdmin(admin.ModelAdmin):
 
         count = data_quality.check_data_quality(analysis_run)
         self.message_user(request, f"{count} data-quality issue(s) found.")
+        return redirect(_analysis_run_change_url(analysis_run))
+
+    def run_full_analysis_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_change_permission(request, analysis_run):
+            return HttpResponseForbidden()
+
+        pipeline.run_full_analysis(analysis_run)
+        score = getattr(analysis_run, "score", None)
+        self.message_user(
+            request,
+            f"Full analysis complete — score {score.overall_score}/100 "
+            f"(confidence {score.confidence_score}/100)." if score else "Full analysis complete.",
+        )
         return redirect(_analysis_run_change_url(analysis_run))
 
     def generate_summary_view(self, request, object_id):
