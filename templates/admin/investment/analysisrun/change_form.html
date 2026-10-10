@@ -12,6 +12,7 @@
       {% endcomment %}
       <input type="submit" formaction="{% url 'admin:investment_analysisrun_run_due_diligence' original.pk %}" formmethod="post" formnovalidate value="Run Due Diligence" class="default">
       <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_risks' original.pk %}" formmethod="post" formnovalidate value="Identify Risks" class="default">
+      <input type="submit" formaction="{% url 'admin:investment_analysisrun_check_data_quality' original.pk %}" formmethod="post" formnovalidate value="Check Data Quality" class="default">
       <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_valuation' original.pk %}" formmethod="post" formnovalidate value="Compute Valuation" class="default">
       <input type="submit" formaction="{% url 'admin:investment_analysisrun_analyze_location' original.pk %}" formmethod="post" formnovalidate value="Analyze Location" class="default">
       <input type="submit" formaction="{% url 'admin:investment_analysisrun_compute_score' original.pk %}" formmethod="post" formnovalidate value="Compute Score" class="default">

@@ -29,6 +29,7 @@ tests mock at) and the admin wiring for the "Run Due Diligence" button.
 import hashlib
 import shutil
 import tempfile
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -42,7 +43,17 @@ from django.urls import reverse
 from duediligence.models import KhasraEntry, KhataLookup, MutationEntry, TitleCheckReport
 from properties.models import Property
 
-from . import ai_analyst, document_ai, due_diligence, location_intelligence, risk_engine, scoring, services, valuation
+from . import (
+    ai_analyst,
+    data_quality,
+    document_ai,
+    due_diligence,
+    location_intelligence,
+    risk_engine,
+    scoring,
+    services,
+    valuation,
+)
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -1700,3 +1711,189 @@ class AnalyzeLocationAdminViewTests(TestCase):
         url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
         response = self.client.get(url)
         self.assertContains(response, "Analyze Location")
+
+
+class CheckDataQualityMissingFieldsTests(TestCase):
+    def test_complete_property_has_no_missing_field_risk(self):
+        prop = _make_property(
+            price=Decimal("2000000"), area_value=Decimal("100"),
+            latitude=Decimal("30.358044"), longitude=Decimal("78.102189"),
+        )
+        run = AnalysisRun.objects.create(property_listing=prop)
+        data_quality.check_data_quality(run)
+        self.assertFalse(
+            PropertyRisk.objects.filter(
+                analysis_run=run, reason__contains="Property is missing"
+            ).exists()
+        )
+
+    def test_missing_price_area_coordinates_all_flagged(self):
+        prop = _make_property(price=None, latitude=None, longitude=None)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        data_quality.check_data_quality(run)
+        risk = PropertyRisk.objects.get(analysis_run=run, reason__contains="Property is missing")
+        self.assertIn("asking price", risk.reason)
+        self.assertIn("coordinates", risk.reason)
+        self.assertEqual(risk.severity, PropertyRisk.Severity.LOW)
+
+
+class CheckDataQualityCoordinatesTests(TestCase):
+    def test_zero_zero_flagged(self):
+        prop = _make_property(latitude=Decimal("0"), longitude=Decimal("0"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+        data_quality.check_data_quality(run)
+        risk = PropertyRisk.objects.get(analysis_run=run, reason__contains="(0, 0)")
+        self.assertEqual(risk.severity, PropertyRisk.Severity.MEDIUM)
+
+    def test_outside_india_flagged(self):
+        prop = _make_property(latitude=Decimal("51.5074"), longitude=Decimal("-0.1278"))  # London
+        run = AnalysisRun.objects.create(property_listing=prop)
+        data_quality.check_data_quality(run)
+        self.assertTrue(
+            PropertyRisk.objects.filter(analysis_run=run, reason__contains="outside India's bounding box").exists()
+        )
+
+    def test_valid_dehradun_coordinates_not_flagged(self):
+        prop = _make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+        data_quality.check_data_quality(run)
+        self.assertFalse(
+            PropertyRisk.objects.filter(analysis_run=run, category=PropertyRisk.Category.DATA_QUALITY).exclude(
+                reason__contains="Property is missing"
+            ).exists()
+        )
+
+    def test_no_coordinates_skips_check_silently(self):
+        prop = _make_property(latitude=None, longitude=None)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        data_quality.check_data_quality(run)  # must not raise
+        self.assertFalse(PropertyRisk.objects.filter(analysis_run=run, reason__contains="bounding box").exists())
+
+
+class CheckDataQualityConflictingEvidenceTests(TestCase):
+    def _document(self, run, doc_type=PropertyDocument.DocumentType.SALE_DEED):
+        return PropertyDocument.objects.create(
+            property_listing=run.property_listing, analysis_run=run, document_type=doc_type
+        )
+
+    def test_different_documents_different_values_flagged(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        doc_a = self._document(run)
+        doc_b = self._document(run, PropertyDocument.DocumentType.KHASRA)
+        Evidence.objects.create(
+            property_listing=run.property_listing, analysis_run=run, source_document=doc_a,
+            claim="Property Area: 108.70 sq. mts.", source_type=Evidence.SourceType.FACT,
+            extracted_value="108.70 sq. mts.",
+        )
+        Evidence.objects.create(
+            property_listing=run.property_listing, analysis_run=run, source_document=doc_b,
+            claim="Property Area: 94.23 sq. mts.", source_type=Evidence.SourceType.FACT,
+            extracted_value="94.23 sq. mts.",
+        )
+
+        data_quality.check_data_quality(run)
+
+        risk = PropertyRisk.objects.get(analysis_run=run, reason__contains="Property Area")
+        self.assertIn("108.70", risk.reason)
+        self.assertIn("94.23", risk.reason)
+        self.assertEqual(risk.severity, PropertyRisk.Severity.MEDIUM)
+
+    def test_same_document_repeated_value_not_flagged(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        doc = self._document(run)
+        for _ in range(2):
+            Evidence.objects.create(
+                property_listing=run.property_listing, analysis_run=run, source_document=doc,
+                claim="Khata Number: 8", source_type=Evidence.SourceType.FACT, extracted_value="8",
+            )
+        data_quality.check_data_quality(run)
+        self.assertFalse(PropertyRisk.objects.filter(analysis_run=run, reason__contains="Khata Number").exists())
+
+    def test_different_documents_same_value_not_flagged(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        doc_a = self._document(run)
+        doc_b = self._document(run, PropertyDocument.DocumentType.KHASRA)
+        for doc in (doc_a, doc_b):
+            Evidence.objects.create(
+                property_listing=run.property_listing, analysis_run=run, source_document=doc,
+                claim="Khata Number: 8", source_type=Evidence.SourceType.FACT, extracted_value="8",
+            )
+        data_quality.check_data_quality(run)
+        self.assertFalse(PropertyRisk.objects.filter(analysis_run=run, reason__contains="Khata Number").exists())
+
+
+class CheckDataQualityStaleComparablesTests(TestCase):
+    def test_old_comparable_flagged(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        PropertyComparable.objects.create(
+            property_listing=run.property_listing, analysis_run=run,
+            price=Decimal("1000000"), area_value=Decimal("100"),
+            transaction_date=date.today() - timedelta(days=600),
+        )
+        data_quality.check_data_quality(run)
+        self.assertTrue(PropertyRisk.objects.filter(analysis_run=run, reason__contains="18 months old").exists())
+
+    def test_recent_comparable_not_flagged(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        PropertyComparable.objects.create(
+            property_listing=run.property_listing, analysis_run=run,
+            price=Decimal("1000000"), area_value=Decimal("100"),
+            transaction_date=date.today() - timedelta(days=30),
+        )
+        data_quality.check_data_quality(run)
+        self.assertFalse(PropertyRisk.objects.filter(analysis_run=run, reason__contains="18 months old").exists())
+
+
+class CheckDataQualityRerunTests(TestCase):
+    def test_rerun_replaces_auto_dq_risks_but_keeps_risk_engine_and_manual_ones(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property(price=None))
+        manual = PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.DATA_QUALITY,
+            severity=PropertyRisk.Severity.LOW, reason="Noted by hand.",
+        )
+        risk_engine_risk = PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.DATA_QUALITY,
+            severity=PropertyRisk.Severity.MEDIUM, reason="[auto] 14 due-diligence categories are not yet verified.",
+        )
+
+        data_quality.check_data_quality(run)
+        data_quality.check_data_quality(run)
+
+        self.assertEqual(
+            PropertyRisk.objects.filter(analysis_run=run, reason__startswith="[auto-dq]").count(), 1
+        )
+        self.assertTrue(PropertyRisk.objects.filter(pk=manual.pk).exists())
+        self.assertTrue(PropertyRisk.objects.filter(pk=risk_engine_risk.pk).exists())
+
+    def test_returns_data_quality_risk_count(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property(price=None))
+        count = data_quality.check_data_quality(run)
+        self.assertEqual(count, PropertyRisk.objects.filter(analysis_run=run, category=PropertyRisk.Category.DATA_QUALITY).count())
+
+
+class CheckDataQualityAdminViewTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_requires_post(self):
+        url = reverse("admin:investment_analysisrun_check_data_quality", args=[self.run.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+
+    def test_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_analysisrun_check_data_quality", args=[self.run.pk])
+        self.assertEqual(self.client.post(url).status_code, 302)
+
+    def test_post_runs_and_redirects(self):
+        url = reverse("admin:investment_analysisrun_check_data_quality", args=[self.run.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+
+    def test_change_form_shows_button(self):
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "Check Data Quality")

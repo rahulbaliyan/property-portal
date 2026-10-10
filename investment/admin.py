@@ -11,7 +11,7 @@ from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 
-from . import ai_analyst, due_diligence, location_intelligence, reports, risk_engine, scoring, services, valuation
+from . import ai_analyst, data_quality, due_diligence, location_intelligence, reports, risk_engine, scoring, services, valuation
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -204,6 +204,11 @@ class AnalysisRunAdmin(admin.ModelAdmin):
                 name="investment_analysisrun_analyze_location",
             ),
             path(
+                "<int:object_id>/check-data-quality/",
+                self.admin_site.admin_view(self.check_data_quality_view),
+                name="investment_analysisrun_check_data_quality",
+            ),
+            path(
                 "<int:object_id>/generate-summary/",
                 self.admin_site.admin_view(self.generate_summary_view),
                 name="investment_analysisrun_generate_summary",
@@ -282,6 +287,17 @@ class AnalysisRunAdmin(admin.ModelAdmin):
             analysis_run=analysis_run, category=DueDiligenceCheck.Category.LOCATION
         ).first()
         self.message_user(request, check.notes if check else "Location analysis complete.")
+        return redirect(_analysis_run_change_url(analysis_run))
+
+    def check_data_quality_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_change_permission(request, analysis_run):
+            return HttpResponseForbidden()
+
+        count = data_quality.check_data_quality(analysis_run)
+        self.message_user(request, f"{count} data-quality issue(s) found.")
         return redirect(_analysis_run_change_url(analysis_run))
 
     def generate_summary_view(self, request, object_id):
