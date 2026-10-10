@@ -78,6 +78,16 @@ class AnalysisRun(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
     error_message = models.TextField(blank=True)
+
+    # Phase 11 — the AI property analyst's synthesized summary. Structured
+    # (ai_summary) for template rendering, raw_response kept verbatim for
+    # audit, same split duediligence/investment already use for every
+    # other AI call's output.
+    ai_summary = models.JSONField(default=dict, blank=True)
+    ai_summary_raw_response = models.TextField(blank=True)
+    ai_summary_error = models.TextField(blank=True)
+    ai_summary_generated_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 

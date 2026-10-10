@@ -1,0 +1,159 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Property Analysis Report #{{ run.pk }}{% endblock %}
+
+{% block content %}
+<h1>Property Analysis Report #{{ run.pk }}</h1>
+
+<p>
+  {% if property %}
+    Property: <a href="{% url 'admin:properties_property_change' property.pk %}">{{ property.title }}</a>
+    ({{ property.get_property_type_display }}, {{ property.get_region_display }})
+  {% else %}
+    No linked property.
+  {% endif %}
+  &middot;
+  <a href="{% url 'admin:investment_analysisrun_change' run.pk %}">Edit this analysis run</a>
+</p>
+
+<h2>Score</h2>
+{% if score and score.overall_score is not None %}
+  <p style="font-size: 1.4em;">
+    <strong>{{ score.overall_score }}/100</strong>
+    &middot;
+    Confidence:
+    {% if score.confidence_score >= 70 %}
+      <span style="color:#1f8a4c;">{{ score.confidence_score }}/100</span>
+    {% elif score.confidence_score >= 40 %}
+      <span style="color:#c9962e;">{{ score.confidence_score }}/100</span>
+    {% else %}
+      <span style="color:#b3261e;">{{ score.confidence_score }}/100</span>
+    {% endif %}
+  </p>
+  {% if score.missing_data_penalty_applied %}
+    <p class="help" style="color:#c9962e;">
+      This score reflects categories with no automated data yet (scored neutral,
+      not good or bad) — see Confidence above and the breakdown below.
+    </p>
+  {% endif %}
+  <pre style="white-space:pre-wrap;">{{ score.explanation }}</pre>
+{% else %}
+  <p>Not yet computed — use "Compute Score" on the analysis run.</p>
+{% endif %}
+
+{% if run.ai_summary.executive_summary %}
+  <h2>AI Analyst Summary</h2>
+  <p class="help">
+    Generated from the structured data below only — not a re-read of the original
+    documents, and never a buy/don't-buy recommendation. Review before relying on it.
+  </p>
+  <p>{{ run.ai_summary.executive_summary }}</p>
+
+  {% if run.ai_summary.key_positives %}
+    <h3>Key Positives</h3>
+    <ul>{% for item in run.ai_summary.key_positives %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if run.ai_summary.key_risks %}
+    <h3>Key Risks</h3>
+    <ul>{% for item in run.ai_summary.key_risks %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if run.ai_summary.missing_information %}
+    <h3>Missing Information</h3>
+    <ul>{% for item in run.ai_summary.missing_information %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if run.ai_summary.verification_checklist %}
+    <h3>Verification Checklist</h3>
+    <ul>{% for item in run.ai_summary.verification_checklist %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if run.ai_summary.questions_for_seller %}
+    <h3>Questions for Seller/Builder</h3>
+    <ul>{% for item in run.ai_summary.questions_for_seller %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+{% elif run.ai_summary_error %}
+  <h2>AI Analyst Summary</h2>
+  <p style="color:#b3261e;">{{ run.ai_summary_error }}</p>
+{% else %}
+  <h2>AI Analyst Summary</h2>
+  <p>Not yet generated — use "Generate AI Summary" on the analysis run.</p>
+{% endif %}
+
+<h2>Due-Diligence Checklist</h2>
+<table>
+  <thead><tr><th>Category</th><th>Status</th><th>Notes</th></tr></thead>
+  <tbody>
+    {% for check in checks %}
+      <tr>
+        <td>{{ check.get_category_display }}</td>
+        <td>
+          {% if check.status == "pass" %}<span style="color:#1f8a4c;">{{ check.get_status_display }}</span>
+          {% elif check.status == "fail" %}<span style="color:#b3261e;font-weight:bold;">{{ check.get_status_display }}</span>
+          {% elif check.status == "warning" %}<span style="color:#d9730d;">{{ check.get_status_display }}</span>
+          {% else %}<span style="color:#555;">{{ check.get_status_display }}</span>{% endif %}
+        </td>
+        <td>{{ check.notes|default:"—" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3">No due-diligence checks yet — use "Run Due Diligence" on the analysis run.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Risks</h2>
+{% if risks %}
+  {% for risk in risks %}
+    <div style="border-left:3px solid {% if risk.severity == 'critical' or risk.severity == 'high' %}#b3261e{% elif risk.severity == 'medium' %}#d9730d{% else %}#999{% endif %}; padding-left:10px; margin-bottom:10px;">
+      <strong>{{ risk.get_severity_display }} — {{ risk.get_category_display }}</strong><br>
+      {{ risk.reason }}
+      {% if risk.recommended_verification %}<br><em>{{ risk.recommended_verification }}</em>{% endif %}
+    </div>
+  {% endfor %}
+{% else %}
+  <p>No risks identified yet — use "Identify Risks" on the analysis run.</p>
+{% endif %}
+
+<h2>Evidence</h2>
+<table>
+  <thead><tr><th>Claim</th><th>Type</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for item in evidence %}
+      <tr>
+        <td>{{ item.claim }}</td>
+        <td>{{ item.get_source_type_display }}</td>
+        <td>
+          {% if item.verification_status == "verified" %}<span style="color:#1f8a4c;">{{ item.get_verification_status_display }}</span>
+          {% elif item.verification_status == "disputed" %}<span style="color:#b3261e;">{{ item.get_verification_status_display }}</span>
+          {% else %}{{ item.get_verification_status_display }}{% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3">No evidence recorded yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Documents</h2>
+<table>
+  <thead><tr><th>Type</th><th>Status</th><th>Uploaded</th></tr></thead>
+  <tbody>
+    {% for doc in documents %}
+      <tr>
+        <td>{{ doc.get_document_type_display }}</td>
+        <td>{{ doc.get_verification_status_display }}</td>
+        <td>{{ doc.uploaded_at }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3">No documents uploaded yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% include "duediligence/_manual_checklist.html" %}
+
+<hr>
+<p class="help">
+  This report reflects only what this system has automated or been given —
+  it is not a complete title or investment verdict, and the final decision
+  always remains with you. See the manual checklist above for everything
+  still requiring a human check.
+</p>
+{% endblock %}

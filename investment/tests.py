@@ -42,7 +42,7 @@ from django.urls import reverse
 from duediligence.models import KhasraEntry, KhataLookup, MutationEntry, TitleCheckReport
 from properties.models import Property
 
-from . import document_ai, due_diligence, services
+from . import ai_analyst, document_ai, due_diligence, risk_engine, scoring, services
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -960,3 +960,383 @@ class RunDueDiligenceAdminViewTests(TestCase):
         url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
         response = self.client.get(url)
         self.assertContains(response, "Run Due Diligence")
+
+
+class DefaultScoringConfigurationMigrationTests(TestCase):
+    def test_seeded_configuration_weights_sum_to_100(self):
+        config = ScoringConfiguration.objects.get(name="Default", property_type="")
+        self.assertTrue(config.is_active)
+        total = sum(f.weight_percent for f in config.factors.all())
+        self.assertEqual(total, Decimal("100"))
+        self.assertEqual(config.factors.count(), 7)
+
+
+class CategoryScoreFromChecksTests(TestCase):
+    def setUp(self):
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_no_checks_returns_default_without_signal(self):
+        score, has_signal = scoring._category_score_from_checks(self.run, [DueDiligenceCheck.Category.OWNERSHIP])
+        self.assertEqual(score, scoring.DEFAULT_CATEGORY_SCORE)
+        self.assertFalse(has_signal)
+
+    def test_all_pass_scores_100(self):
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.OWNERSHIP, status=DueDiligenceCheck.Status.PASS
+        )
+        score, has_signal = scoring._category_score_from_checks(self.run, [DueDiligenceCheck.Category.OWNERSHIP])
+        self.assertEqual(score, 100)
+        self.assertTrue(has_signal)
+
+    def test_fail_scores_0(self):
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.OWNERSHIP, status=DueDiligenceCheck.Status.FAIL
+        )
+        score, has_signal = scoring._category_score_from_checks(self.run, [DueDiligenceCheck.Category.OWNERSHIP])
+        self.assertEqual(score, 0)
+        self.assertTrue(has_signal)
+
+    def test_mixed_statuses_average(self):
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.OWNERSHIP, status=DueDiligenceCheck.Status.PASS
+        )
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.REGISTRY, status=DueDiligenceCheck.Status.WARNING
+        )
+        score, has_signal = scoring._category_score_from_checks(
+            self.run, [DueDiligenceCheck.Category.OWNERSHIP, DueDiligenceCheck.Category.REGISTRY]
+        )
+        self.assertEqual(score, 80)  # (100 + 60) / 2
+        self.assertTrue(has_signal)
+
+    def test_not_applicable_excluded_and_unknown_has_no_signal(self):
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.OWNERSHIP,
+            status=DueDiligenceCheck.Status.NOT_APPLICABLE,
+        )
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.REGISTRY,
+            status=DueDiligenceCheck.Status.UNKNOWN,
+        )
+        score, has_signal = scoring._category_score_from_checks(
+            self.run, [DueDiligenceCheck.Category.OWNERSHIP, DueDiligenceCheck.Category.REGISTRY]
+        )
+        self.assertEqual(score, scoring.DEFAULT_CATEGORY_SCORE)
+        self.assertFalse(has_signal)
+
+
+class PriceValuationAndMarketScoreTests(TestCase):
+    def setUp(self):
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_no_valuation_returns_default_without_signal(self):
+        score, has_signal = scoring._price_valuation_score(self.run)
+        self.assertEqual(score, scoring.DEFAULT_CATEGORY_SCORE)
+        self.assertFalse(has_signal)
+        score, has_signal = scoring._market_score(self.run)
+        self.assertEqual(score, scoring.DEFAULT_CATEGORY_SCORE)
+        self.assertFalse(has_signal)
+
+    def test_at_market_price_scores_well(self):
+        PropertyValuation.objects.create(analysis_run=self.run, premium_discount_percent=Decimal("0"), comparable_count=3)
+        score, has_signal = scoring._price_valuation_score(self.run)
+        self.assertEqual(score, 100)
+        self.assertTrue(has_signal)
+
+    def test_large_premium_scores_poorly(self):
+        PropertyValuation.objects.create(analysis_run=self.run, premium_discount_percent=Decimal("30"), comparable_count=3)
+        score, _ = scoring._price_valuation_score(self.run)
+        self.assertLess(score, 50)
+
+    def test_more_comparables_scores_market_higher(self):
+        PropertyValuation.objects.create(analysis_run=self.run, premium_discount_percent=Decimal("0"), comparable_count=1)
+        low, _ = scoring._market_score(AnalysisRun.objects.get(pk=self.run.pk))
+        PropertyValuation.objects.filter(analysis_run=self.run).update(comparable_count=5)
+        high, _ = scoring._market_score(AnalysisRun.objects.get(pk=self.run.pk))
+        self.assertGreater(high, low)
+
+
+class ComputeScoreEndToEndTests(TestCase):
+    def test_clean_pass_scores_high_with_high_confidence(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        for category in (
+            DueDiligenceCheck.Category.OWNERSHIP, DueDiligenceCheck.Category.REGISTRY,
+            DueDiligenceCheck.Category.LITIGATION, DueDiligenceCheck.Category.ROAD_ACCESS,
+            DueDiligenceCheck.Category.UTILITIES, DueDiligenceCheck.Category.LOCATION,
+            DueDiligenceCheck.Category.LIQUIDITY, DueDiligenceCheck.Category.PROPERTY_CONDITION,
+            DueDiligenceCheck.Category.ENVIRONMENTAL,
+        ):
+            DueDiligenceCheck.objects.create(analysis_run=run, category=category, status=DueDiligenceCheck.Status.PASS)
+        PropertyValuation.objects.create(analysis_run=run, premium_discount_percent=Decimal("0"), comparable_count=5)
+
+        score = scoring.compute_score(run)
+        self.assertGreaterEqual(score.overall_score, 90)
+        self.assertGreaterEqual(score.confidence_score, 80)
+        self.assertFalse(score.missing_data_penalty_applied)
+
+    def test_everything_unknown_scores_neutral_with_low_confidence(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        score = scoring.compute_score(run)
+        self.assertEqual(score.overall_score, scoring.DEFAULT_CATEGORY_SCORE)
+        self.assertEqual(score.confidence_score, 0)
+        self.assertTrue(score.missing_data_penalty_applied)
+
+    def test_a_fail_drags_down_legal_documentation_and_overall(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP, status=DueDiligenceCheck.Status.FAIL
+        )
+        score = scoring.compute_score(run)
+        self.assertLess(score.category_scores["legal_documentation"], scoring.DEFAULT_CATEGORY_SCORE)
+        self.assertIn("FAILED", score.explanation)
+
+    def test_rerun_updates_instead_of_duplicating(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        scoring.compute_score(run)
+        scoring.compute_score(run)
+        self.assertEqual(PropertyScore.objects.filter(analysis_run=run).count(), 1)
+
+    def test_explanation_mentions_unknown_category_count(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        due_diligence.run_due_diligence(run)  # creates all 17 as Unknown/Pending
+        score = scoring.compute_score(run)
+        self.assertIn("Unknown/Pending Verification", score.explanation)
+
+
+class ComputeRisksTests(TestCase):
+    def test_fail_check_creates_mapped_risk(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP,
+            status=DueDiligenceCheck.Status.FAIL, notes="Seller mismatch.",
+        )
+        risk_engine.compute_risks(run)
+        risk = PropertyRisk.objects.get(analysis_run=run, category=PropertyRisk.Category.LEGAL)
+        self.assertEqual(risk.severity, PropertyRisk.Severity.HIGH)
+        self.assertIn("Seller mismatch", risk.reason)
+        self.assertTrue(risk.reason.startswith("[auto]"))
+
+    def test_warning_check_creates_medium_severity_risk(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.LITIGATION, status=DueDiligenceCheck.Status.WARNING
+        )
+        risk_engine.compute_risks(run)
+        risk = PropertyRisk.objects.get(analysis_run=run, category=PropertyRisk.Category.LEGAL)
+        self.assertEqual(risk.severity, PropertyRisk.Severity.MEDIUM)
+
+    def test_category_with_no_risk_mapping_is_skipped(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.PROPERTY_CONDITION,
+            status=DueDiligenceCheck.Status.FAIL,
+        )
+        risk_engine.compute_risks(run)
+        self.assertFalse(PropertyRisk.objects.filter(analysis_run=run, reason__startswith="[auto]").exists())
+
+    def test_many_unresolved_categories_get_medium_data_quality_risk(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        due_diligence.run_due_diligence(run)  # 17 categories, all Unknown/Pending
+        risk_engine.compute_risks(run)
+        risk = PropertyRisk.objects.get(analysis_run=run, category=PropertyRisk.Category.DATA_QUALITY)
+        self.assertEqual(risk.severity, PropertyRisk.Severity.MEDIUM)
+
+    def test_rerun_clears_auto_risks_but_keeps_manual_ones(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        manual = PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.ENVIRONMENTAL,
+            severity=PropertyRisk.Severity.LOW, reason="Flagged by hand during a site visit.",
+        )
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP, status=DueDiligenceCheck.Status.FAIL
+        )
+        risk_engine.compute_risks(run)
+        risk_engine.compute_risks(run)
+
+        self.assertEqual(PropertyRisk.objects.filter(analysis_run=run, reason__startswith="[auto]").count(), 1)
+        self.assertTrue(PropertyRisk.objects.filter(pk=manual.pk).exists())
+
+    def test_returns_total_risk_count(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP, status=DueDiligenceCheck.Status.FAIL
+        )
+        count = risk_engine.compute_risks(run)
+        self.assertEqual(count, PropertyRisk.objects.filter(analysis_run=run).count())
+
+
+class AiAnalystContextTests(TestCase):
+    def test_context_includes_checks_risks_evidence(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP,
+            status=DueDiligenceCheck.Status.PASS, notes="Matched.",
+        )
+        PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.LEGAL,
+            severity=PropertyRisk.Severity.LOW, reason="Minor note.",
+        )
+        Evidence.objects.create(
+            property_listing=run.property_listing, analysis_run=run,
+            claim="Area is 150 gaj", source_type=Evidence.SourceType.FACT,
+        )
+        context = ai_analyst.build_context(run)
+        self.assertEqual(len(context["due_diligence_checks"]), 1)
+        self.assertEqual(len(context["risks"]), 1)
+        self.assertEqual(len(context["evidence"]), 1)
+        self.assertIsNone(context["score"])
+
+    def test_context_includes_score_when_present(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        PropertyScore.objects.create(analysis_run=run, overall_score=76, confidence_score=61)
+        context = ai_analyst.build_context(run)
+        self.assertEqual(context["score"]["overall_score"], 76)
+
+
+class AiAnalystClientTests(TestCase):
+    @override_settings(AI_EXTRACTION_PROVIDER="anthropic", ANTHROPIC_API_KEY="")
+    def test_config_error_sets_error_field_without_raising(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        ai_analyst.generate_summary(run)  # must not raise
+        run.refresh_from_db()
+        self.assertIn("ANTHROPIC_API_KEY", run.ai_summary_error)
+
+    @override_settings(AI_EXTRACTION_PROVIDER="carrier-pigeon")
+    def test_unrecognized_provider_sets_error(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        ai_analyst.generate_summary(run)
+        run.refresh_from_db()
+        self.assertIn("Unrecognized", run.ai_summary_error)
+
+    @patch("investment.ai_analyst._build_model")
+    def test_request_error_sets_error_without_raising(self, mock_build_model):
+        mock_model = MagicMock()
+        mock_model.invoke.side_effect = RuntimeError("network boom")
+        mock_build_model.return_value = mock_model
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        ai_analyst.generate_summary(run)
+        run.refresh_from_db()
+        self.assertIn("network boom", run.ai_summary_error)
+
+    @patch("investment.ai_analyst._build_model")
+    def test_parse_error_sets_error(self, mock_build_model):
+        mock_model = MagicMock()
+        mock_model.invoke.return_value = {"parsed": None, "parsing_error": "bad json"}
+        mock_build_model.return_value = mock_model
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        ai_analyst.generate_summary(run)
+        run.refresh_from_db()
+        self.assertIn("bad json", run.ai_summary_error)
+
+    @patch("investment.ai_analyst._build_model")
+    def test_success_populates_summary_and_clears_error(self, mock_build_model):
+        schema = ai_analyst.PropertyAnalysisSummary(
+            executive_summary="Clean match on all checked items.",
+            key_positives=["Seller/buyer names match Bhulekh."],
+            key_risks=[],
+            missing_information=["Market comparables"],
+            verification_checklist=["Confirm NOC"],
+            questions_for_seller=[],
+        )
+        mock_model = MagicMock()
+        mock_model.invoke.return_value = {"parsed": schema, "parsing_error": None}
+        mock_build_model.return_value = mock_model
+
+        run = AnalysisRun.objects.create(property_listing=_make_property(), ai_summary_error="stale error")
+        ai_analyst.generate_summary(run)
+        run.refresh_from_db()
+
+        self.assertEqual(run.ai_summary["executive_summary"], "Clean match on all checked items.")
+        self.assertFalse(run.ai_summary_error)
+        self.assertIsNotNone(run.ai_summary_generated_at)
+        self.assertIn("Clean match", run.ai_summary_raw_response)
+
+
+class AnalysisRunAdminActionViewsTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_compute_score_requires_post(self):
+        url = reverse("admin:investment_analysisrun_compute_score", args=[self.run.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+
+    def test_compute_score_post_computes_and_redirects(self):
+        url = reverse("admin:investment_analysisrun_compute_score", args=[self.run.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+        self.assertTrue(PropertyScore.objects.filter(analysis_run=self.run).exists())
+
+    def test_compute_risks_post_identifies_and_redirects(self):
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.OWNERSHIP, status=DueDiligenceCheck.Status.FAIL
+        )
+        url = reverse("admin:investment_analysisrun_compute_risks", args=[self.run.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+        self.assertTrue(PropertyRisk.objects.filter(analysis_run=self.run).exists())
+
+    @patch("investment.admin.ai_analyst.generate_summary")
+    def test_generate_summary_post_calls_service_and_redirects(self, mock_generate):
+        url = reverse("admin:investment_analysisrun_generate_summary", args=[self.run.pk])
+        response = self.client.post(url)
+        mock_generate.assert_called_once()
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+
+    def test_actions_require_staff(self):
+        self.client.logout()
+        for name in ("compute_score", "compute_risks", "generate_summary"):
+            url = reverse(f"admin:investment_analysisrun_{name}", args=[self.run.pk])
+            self.assertEqual(self.client.post(url).status_code, 302)
+
+    def test_change_form_shows_all_buttons(self):
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.get(url)
+        for label in ("Identify Risks", "Compute Score", "Generate AI Summary", "View Report"):
+            self.assertContains(response, label)
+
+
+class ReportViewTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_report_renders_with_no_data_yet(self):
+        url = reverse("admin:investment_analysisrun_report", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Not yet computed")
+
+    def test_report_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_analysisrun_report", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+
+    def test_report_shows_score_checks_risks_evidence(self):
+        DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.OWNERSHIP,
+            status=DueDiligenceCheck.Status.PASS, notes="Matched.",
+        )
+        PropertyRisk.objects.create(
+            analysis_run=self.run, category=PropertyRisk.Category.LEGAL,
+            severity=PropertyRisk.Severity.LOW, reason="Minor note.",
+        )
+        Evidence.objects.create(
+            property_listing=self.run.property_listing, analysis_run=self.run,
+            claim="Area is 150 gaj", source_type=Evidence.SourceType.FACT,
+        )
+        scoring.compute_score(self.run)
+
+        url = reverse("admin:investment_analysisrun_report", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "Matched.")
+        self.assertContains(response, "Minor note.")
+        self.assertContains(response, "Area is 150 gaj")
+        self.assertContains(response, f"{self.run.score.overall_score}/100")

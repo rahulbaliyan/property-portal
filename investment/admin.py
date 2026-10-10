@@ -11,7 +11,7 @@ from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 
-from . import due_diligence, services
+from . import ai_analyst, due_diligence, reports, risk_engine, scoring, services
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -27,6 +27,10 @@ from .models import (
     ScoringFactor,
     VerificationItem,
 )
+
+
+def _analysis_run_change_url(analysis_run):
+    return reverse("admin:investment_analysisrun_change", args=[analysis_run.pk])
 
 
 def _prepare_document_before_save(document, request):
@@ -95,6 +99,16 @@ class PropertyComparableInline(admin.TabularInline):
 class PropertyScoreInline(admin.StackedInline):
     model = PropertyScore
     extra = 0
+    # Written by scoring.compute_score() — never hand-entered.
+    readonly_fields = (
+        "configuration",
+        "category_scores",
+        "overall_score",
+        "confidence_score",
+        "missing_data_penalty_applied",
+        "explanation",
+        "computed_at",
+    )
 
 
 class PropertyValuationInline(admin.StackedInline):
@@ -118,6 +132,7 @@ class AnalysisRunAdmin(admin.ModelAdmin):
     search_fields = ("property_listing__title",)
     autocomplete_fields = ["property_listing"]
     change_form_template = "admin/investment/analysisrun/change_form.html"
+    readonly_fields = ("ai_summary", "ai_summary_raw_response", "ai_summary_error", "ai_summary_generated_at")
     inlines = [
         DueDiligenceCheckInline,
         PropertyRiskInline,
@@ -157,6 +172,26 @@ class AnalysisRunAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.run_due_diligence_view),
                 name="investment_analysisrun_run_due_diligence",
             ),
+            path(
+                "<int:object_id>/compute-score/",
+                self.admin_site.admin_view(self.compute_score_view),
+                name="investment_analysisrun_compute_score",
+            ),
+            path(
+                "<int:object_id>/compute-risks/",
+                self.admin_site.admin_view(self.compute_risks_view),
+                name="investment_analysisrun_compute_risks",
+            ),
+            path(
+                "<int:object_id>/generate-summary/",
+                self.admin_site.admin_view(self.generate_summary_view),
+                name="investment_analysisrun_generate_summary",
+            ),
+            path(
+                "<int:object_id>/report/",
+                self.admin_site.admin_view(self.report_view),
+                name="investment_analysisrun_report",
+            ),
         ]
         return custom + urls
 
@@ -169,7 +204,50 @@ class AnalysisRunAdmin(admin.ModelAdmin):
 
         due_diligence.run_due_diligence(analysis_run)
         self.message_user(request, "Due diligence checks updated.")
-        return redirect(reverse("admin:investment_analysisrun_change", args=[analysis_run.pk]))
+        return redirect(_analysis_run_change_url(analysis_run))
+
+    def compute_score_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_change_permission(request, analysis_run):
+            return HttpResponseForbidden()
+
+        result = scoring.compute_score(analysis_run)
+        self.message_user(
+            request,
+            f"Score: {result.overall_score}/100 (confidence {result.confidence_score}/100).",
+        )
+        return redirect(_analysis_run_change_url(analysis_run))
+
+    def compute_risks_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_change_permission(request, analysis_run):
+            return HttpResponseForbidden()
+
+        count = risk_engine.compute_risks(analysis_run)
+        self.message_user(request, f"{count} risk(s) identified.")
+        return redirect(_analysis_run_change_url(analysis_run))
+
+    def generate_summary_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_change_permission(request, analysis_run):
+            return HttpResponseForbidden()
+
+        ai_analyst.generate_summary(analysis_run)
+        analysis_run.refresh_from_db()
+        self.message_user(request, "AI summary generated — review it before relying on it.")
+        return redirect(_analysis_run_change_url(analysis_run))
+
+    def report_view(self, request, object_id):
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_view_permission(request, analysis_run):
+            return HttpResponseForbidden()
+        return reports.render_report(request, analysis_run, self.admin_site)
 
 
 class DocumentAnalysisInline(admin.StackedInline):
