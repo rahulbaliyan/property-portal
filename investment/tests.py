@@ -595,6 +595,7 @@ class AnalyzeDocumentServiceTests(TestCase):
         schema = document_ai.DocumentExtractionSchema(
             owner_or_seller_names=["Ramesh Kumar"],
             buyer_names=["Suresh Singh"],
+            nominator_names=["Krishna Sharma"],
             khasra_numbers=["410", "409"],
             khata_number="222",
             property_area="150",
@@ -622,6 +623,7 @@ class AnalyzeDocumentServiceTests(TestCase):
         claims = [e.claim for e in evidence]
         self.assertTrue(any("Ramesh Kumar" in c for c in claims))
         self.assertTrue(any("Suresh Singh" in c for c in claims))
+        self.assertTrue(any("Krishna Sharma" in c for c in claims))
         self.assertTrue(any("150 gaj" in c for c in claims))
         self.assertTrue(any("1800000" in c for c in claims))
         self.assertTrue(any("410; 409" in c for c in claims))

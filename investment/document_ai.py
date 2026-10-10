@@ -79,6 +79,14 @@ class DocumentExtractionSchema(BaseModel):
         description="Full name(s) of the buyer/transferee exactly as printed, if any. "
         "Empty list if none are printed.",
     )
+    nominator_names: list[str] = Field(
+        default_factory=list,
+        description="Full name(s) of any 'Nominator' (or similarly-named third party "
+        "distinct from seller and buyer who chose/confirmed the purchaser, e.g. under "
+        "an agreement to sell) explicitly named as such in the document. Do not "
+        "include someone here who is actually the seller, buyer, or a GPA/attorney "
+        "acting on a seller's behalf. Empty list if the document has no such role.",
+    )
     property_area: str | None = Field(
         default=None, description="The area figure as printed, digits only. " + _NO_GUESSING_INSTRUCTION
     )

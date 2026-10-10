@@ -58,6 +58,7 @@ def find_duplicate_document(property_listing, checksum: str, exclude_pk=None):
 _EVIDENCE_FIELD_LABELS = (
     ("owner_or_seller_names", "Owner/Seller"),
     ("buyer_names", "Buyer"),
+    ("nominator_names", "Nominator"),
     ("khasra_numbers", "Khasra Number(s)"),
     ("khata_number", "Khata Number"),
     ("survey_number", "Survey Number"),
