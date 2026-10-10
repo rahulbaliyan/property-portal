@@ -10,9 +10,13 @@ whichever provider happens to answer it.
 """
 
 import json
+import logging
+import time
 
 from django.conf import settings
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 ANTHROPIC_MODEL = "claude-sonnet-5"
 OPENAI_MODEL = "gpt-4o"
@@ -223,6 +227,8 @@ def extract_deed_fields(pdf_bytes: bytes) -> tuple[DeedExtractionSchema, str]:
         ]
     )
 
+    provider = settings.AI_EXTRACTION_PROVIDER
+    started = time.monotonic()
     try:
         response = model.invoke([message])
     except DeedExtractionError:
@@ -230,13 +236,19 @@ def extract_deed_fields(pdf_bytes: bytes) -> tuple[DeedExtractionSchema, str]:
     except Exception as exc:  # noqa: BLE001 — deliberately broad: wraps any
         # langchain/anthropic/httpx exception into our own hierarchy so
         # callers only need to catch DeedExtractionError.
+        logger.warning(
+            "Deed extraction request failed (provider=%s, %.1fs): %s", provider, time.monotonic() - started, exc
+        )
         raise DeedExtractionRequestError(f"Deed extraction request failed: {exc}") from exc
+    elapsed = time.monotonic() - started
 
     parsed = response.get("parsed") if isinstance(response, dict) else None
     if parsed is None:
         parsing_error = response.get("parsing_error") if isinstance(response, dict) else None
+        logger.warning("Deed extraction schema mismatch (provider=%s, %.1fs): %s", provider, elapsed, parsing_error)
         raise DeedExtractionParseError(
             f"Model response did not match the expected schema: {parsing_error}"
         )
+    logger.info("Deed extraction succeeded (provider=%s, %.1fs)", provider, elapsed)
 
     return parsed, json.dumps(parsed.model_dump(), ensure_ascii=False, indent=2)

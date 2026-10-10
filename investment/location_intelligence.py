@@ -16,12 +16,20 @@ need a different API (Google's Roads API) or a manual admin note; not
 attempted, rather than guessed at.
 """
 
+import logging
 import math
 
 import requests
 from django.conf import settings
 
-PLACES_NEARBY_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+logger = logging.getLogger(__name__)
+
+# Places API (New) — confirmed live that the legacy Nearby Search REST
+# endpoint (maps.googleapis.com/maps/api/place/nearbysearch/json) returns
+# REQUEST_DENIED on a freshly-created API key/project ("legacy API...not
+# enabled"); Google enables the New API by default now, not the legacy
+# one, so this module targets that instead.
+PLACES_NEARBY_SEARCH_URL = "https://places.googleapis.com/v1/places:searchNearby"
 REQUEST_TIMEOUT_SECONDS = 10
 DEFAULT_RADIUS_METERS = 3000
 
@@ -79,35 +87,53 @@ def fetch_nearby_places(latitude, longitude, place_type: str, radius_m: int = DE
         )
 
     try:
-        response = requests.get(
+        response = requests.post(
             PLACES_NEARBY_SEARCH_URL,
-            params={
-                "location": f"{latitude},{longitude}",
-                "radius": radius_m,
-                "type": place_type,
-                "key": settings.GOOGLE_MAPS_API_KEY,
+            json={
+                "includedTypes": [place_type],
+                "maxResultCount": 10,
+                "locationRestriction": {
+                    "circle": {
+                        "center": {"latitude": float(latitude), "longitude": float(longitude)},
+                        "radius": float(radius_m),
+                    }
+                },
+            },
+            headers={
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": settings.GOOGLE_MAPS_API_KEY,
+                # Required by Places API (New) — an unlisted field is
+                # simply omitted from the response, not an error, so this
+                # must name everything fetch_nearby_places actually reads.
+                "X-Goog-FieldMask": "places.displayName,places.location,places.formattedAddress",
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-        data = response.json()
     except requests.RequestException as exc:
-        raise LocationIntelligenceRequestError(f"Places API request failed: {exc}") from exc
+        detail = str(exc)
+        error_response = getattr(exc, "response", None)
+        if error_response is not None:
+            try:
+                detail = error_response.json().get("error", {}).get("message", detail)
+            except ValueError:
+                pass
+        logger.warning("Places API request failed (type=%s): %s", place_type, detail)
+        raise LocationIntelligenceRequestError(f"Places API request failed: {detail}") from exc
 
-    status = data.get("status")
-    if status not in ("OK", "ZERO_RESULTS"):
-        raise LocationIntelligenceRequestError(f"Places API returned {status}: {data.get('error_message', '')}")
-
+    data = response.json()
     places = []
-    for result in data.get("results", []):
-        location = result.get("geometry", {}).get("location", {})
-        if "lat" not in location or "lng" not in location:
+    for result in data.get("places", []):
+        location = result.get("location", {})
+        if "latitude" not in location or "longitude" not in location:
             continue
         places.append(
             {
-                "name": result.get("name", ""),
-                "address": result.get("vicinity", ""),
-                "distance_km": round(_haversine_km(latitude, longitude, location["lat"], location["lng"]), 2),
+                "name": result.get("displayName", {}).get("text", ""),
+                "address": result.get("formattedAddress", ""),
+                "distance_km": round(
+                    _haversine_km(latitude, longitude, location["latitude"], location["longitude"]), 2
+                ),
             }
         )
     places.sort(key=lambda p: p["distance_km"])

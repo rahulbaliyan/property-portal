@@ -13,12 +13,16 @@ a file-reading call — no file block, no multimodal/OCR concern.
 """
 
 import json
+import logging
+import time
 
 from django.conf import settings
 from django.utils import timezone
 from pydantic import BaseModel, Field
 
 from .models import AnalysisRun
+
+logger = logging.getLogger(__name__)
 
 ANTHROPIC_MODEL = "claude-sonnet-5"
 OPENAI_MODEL = "gpt-4o"
@@ -171,6 +175,7 @@ def generate_summary(analysis_run: AnalysisRun) -> None:
 
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    started = time.monotonic()
     try:
         response = model.invoke(
             [
@@ -180,13 +185,16 @@ def generate_summary(analysis_run: AnalysisRun) -> None:
         )
     except Exception as exc:  # noqa: BLE001 — wraps any langchain/provider-SDK
         # exception; this function's contract is to never raise to the caller.
+        logger.warning("AI summary request failed (run=%s, %.1fs): %s", analysis_run.pk, time.monotonic() - started, exc)
         analysis_run.ai_summary_error = f"AI summary request failed: {exc}"
         analysis_run.save(update_fields=["ai_summary_error"])
         return
+    elapsed = time.monotonic() - started
 
     parsed = response.get("parsed") if isinstance(response, dict) else None
     if parsed is None:
         parsing_error = response.get("parsing_error") if isinstance(response, dict) else None
+        logger.warning("AI summary schema mismatch (run=%s, %.1fs): %s", analysis_run.pk, elapsed, parsing_error)
         analysis_run.ai_summary_error = f"Model response did not match the expected schema: {parsing_error}"
         analysis_run.save(update_fields=["ai_summary_error"])
         return
@@ -198,3 +206,4 @@ def generate_summary(analysis_run: AnalysisRun) -> None:
     analysis_run.save(
         update_fields=["ai_summary", "ai_summary_raw_response", "ai_summary_error", "ai_summary_generated_at"]
     )
+    logger.info("AI summary generated (run=%s, %.1fs)", analysis_run.pk, elapsed)

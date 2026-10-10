@@ -19,9 +19,13 @@ unittest.mock.patch("investment.document_ai._build_model").
 """
 
 import json
+import logging
+import time
 
 from django.conf import settings
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 ANTHROPIC_MODEL = "claude-sonnet-5"
 OPENAI_MODEL = "gpt-4o"
@@ -250,6 +254,8 @@ def extract_document_fields(file_bytes: bytes, filename: str) -> tuple[DocumentE
         ]
     )
 
+    provider = settings.AI_EXTRACTION_PROVIDER
+    started = time.monotonic()
     try:
         response = model.invoke([message])
     except DocumentExtractionError:
@@ -257,13 +263,22 @@ def extract_document_fields(file_bytes: bytes, filename: str) -> tuple[DocumentE
     except Exception as exc:  # noqa: BLE001 — deliberately broad: wraps any
         # langchain/provider-SDK exception into our own hierarchy so
         # callers only need to catch DocumentExtractionError.
+        logger.warning(
+            "Document extraction request failed (provider=%s, %.1fs): %s",
+            provider, time.monotonic() - started, exc,
+        )
         raise DocumentExtractionRequestError(f"Document extraction request failed: {exc}") from exc
+    elapsed = time.monotonic() - started
 
     parsed = response.get("parsed") if isinstance(response, dict) else None
     if parsed is None:
         parsing_error = response.get("parsing_error") if isinstance(response, dict) else None
+        logger.warning(
+            "Document extraction schema mismatch (provider=%s, %.1fs): %s", provider, elapsed, parsing_error
+        )
         raise DocumentExtractionParseError(
             f"Model response did not match the expected schema: {parsing_error}"
         )
+    logger.info("Document extraction succeeded (provider=%s, %.1fs)", provider, elapsed)
 
     return parsed, json.dumps(parsed.model_dump(), ensure_ascii=False, indent=2)

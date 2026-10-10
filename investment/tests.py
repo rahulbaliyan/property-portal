@@ -1549,46 +1549,67 @@ class HaversineDistanceTests(TestCase):
 
 
 class FetchNearbyPlacesTests(TestCase):
+    """Mocks Places API (New)'s actual shape — POST with a JSON body,
+    places.displayName/location/formattedAddress response fields — not
+    the legacy Nearby Search REST API this module originally targeted.
+    Confirmed live that a freshly-created key/project has the legacy API
+    disabled (REQUEST_DENIED, "legacy API...not enabled") while the New
+    API works, which is why this module was switched over."""
+
     @override_settings(GOOGLE_MAPS_API_KEY="")
     def test_config_error_when_key_blank(self):
         with self.assertRaises(location_intelligence.LocationIntelligenceConfigError):
             location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
 
     @override_settings(GOOGLE_MAPS_API_KEY="test-key")
-    @patch("investment.location_intelligence.requests.get")
-    def test_request_exception_wrapped(self, mock_get):
+    @patch("investment.location_intelligence.requests.post")
+    def test_request_exception_wrapped(self, mock_post):
         import requests as requests_module
 
-        mock_get.side_effect = requests_module.RequestException("network boom")
+        mock_post.side_effect = requests_module.RequestException("network boom")
         with self.assertRaises(location_intelligence.LocationIntelligenceRequestError):
             location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
 
     @override_settings(GOOGLE_MAPS_API_KEY="test-key")
-    @patch("investment.location_intelligence.requests.get")
-    def test_non_ok_status_raises(self, mock_get):
-        mock_get.return_value = MagicMock(
-            status_code=200, json=lambda: {"status": "REQUEST_DENIED", "error_message": "bad key"}
-        )
-        with self.assertRaises(location_intelligence.LocationIntelligenceRequestError):
+    @patch("investment.location_intelligence.requests.post")
+    def test_http_error_extracts_message_from_body(self, mock_post):
+        import requests as requests_module
+
+        error_response = MagicMock(json=lambda: {"error": {"message": "API key not valid"}})
+        http_error = requests_module.HTTPError("403 Client Error")
+        http_error.response = error_response
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = http_error
+        mock_post.return_value = mock_response
+
+        with self.assertRaises(location_intelligence.LocationIntelligenceRequestError) as ctx:
             location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
+        self.assertIn("API key not valid", str(ctx.exception))
 
     @override_settings(GOOGLE_MAPS_API_KEY="test-key")
-    @patch("investment.location_intelligence.requests.get")
-    def test_zero_results_returns_empty_list(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "ZERO_RESULTS", "results": []})
+    @patch("investment.location_intelligence.requests.post")
+    def test_zero_results_returns_empty_list(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {})
         places = location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
         self.assertEqual(places, [])
 
     @override_settings(GOOGLE_MAPS_API_KEY="test-key")
-    @patch("investment.location_intelligence.requests.get")
-    def test_successful_response_parsed_and_sorted_by_distance(self, mock_get):
-        mock_get.return_value = MagicMock(
+    @patch("investment.location_intelligence.requests.post")
+    def test_successful_response_parsed_and_sorted_by_distance(self, mock_post):
+        mock_post.return_value = MagicMock(
             status_code=200,
             json=lambda: {
-                "status": "OK",
-                "results": [
-                    {"name": "Far School", "vicinity": "Far Rd", "geometry": {"location": {"lat": 30.40, "lng": 78.20}}},
-                    {"name": "Near School", "vicinity": "Near Rd", "geometry": {"location": {"lat": 30.359, "lng": 78.103}}},
+                "places": [
+                    {
+                        "displayName": {"text": "Far School"},
+                        "formattedAddress": "Far Rd",
+                        "location": {"latitude": 30.40, "longitude": 78.20},
+                    },
+                    {
+                        "displayName": {"text": "Near School"},
+                        "formattedAddress": "Near Rd",
+                        "location": {"latitude": 30.359, "longitude": 78.103},
+                    },
                 ],
             },
         )
@@ -1596,6 +1617,16 @@ class FetchNearbyPlacesTests(TestCase):
         self.assertEqual(len(places), 2)
         self.assertEqual(places[0]["name"], "Near School")  # sorted nearest-first
         self.assertLess(places[0]["distance_km"], places[1]["distance_km"])
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.requests.post")
+    def test_sends_api_key_and_field_mask_headers(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"places": []})
+        location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
+        _args, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["headers"]["X-Goog-Api-Key"], "test-key")
+        self.assertIn("places.location", kwargs["headers"]["X-Goog-FieldMask"])
+        self.assertEqual(kwargs["json"]["includedTypes"], ["school"])
 
 
 class AnalyzeLocationTests(TestCase):

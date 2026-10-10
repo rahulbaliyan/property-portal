@@ -50,5 +50,19 @@ LOGGING = {
             "handlers": ["console"],
             "level": "INFO",
         },
+        # Phase 21: AI-call and external-API latency/success/failure
+        # logging (investment/document_ai.py, investment/ai_analyst.py,
+        # investment/location_intelligence.py, duediligence/deed_ai.py,
+        # duediligence/services.py) — unconfigured otherwise, these
+        # modules' INFO-level logs default to WARNING-and-above-only and
+        # wouldn't show up in Render's log viewer at all.
+        "investment": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "duediligence": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
     },
 }
