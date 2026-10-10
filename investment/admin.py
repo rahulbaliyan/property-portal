@@ -7,6 +7,9 @@ admin grew incrementally alongside its services module rather than upfront.
 """
 
 from django.contrib import admin, messages
+from django.http import HttpResponseForbidden, HttpResponseNotAllowed
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import path, reverse
 
 from . import services
 from .models import (
@@ -145,6 +148,19 @@ class AnalysisRunAdmin(admin.ModelAdmin):
 class DocumentAnalysisInline(admin.StackedInline):
     model = DocumentAnalysis
     extra = 0
+    # Every field here is written by services.analyze_document(), never
+    # hand-entered — same readonly-computed-fields convention duediligence
+    # uses for its own AI-extraction output.
+    readonly_fields = (
+        "extracted_text",
+        "extracted_data",
+        "raw_ai_response",
+        "extraction_method",
+        "confidence",
+        "flagged_inconsistencies",
+        "error_message",
+        "analyzed_at",
+    )
 
 
 @admin.register(PropertyDocument)
@@ -154,11 +170,38 @@ class PropertyDocumentAdmin(admin.ModelAdmin):
     search_fields = ("property_listing__title",)
     autocomplete_fields = ["property_listing"]
     inlines = [DocumentAnalysisInline]
+    readonly_fields = ("checksum", "uploaded_by")
+    change_form_template = "admin/investment/propertydocument/change_form.html"
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         duplicate = _finalize_document_upload(obj, request)
         _warn_if_duplicate(self, request, obj, duplicate)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:object_id>/analyze-ai/",
+                self.admin_site.admin_view(self.analyze_document_view),
+                name="investment_propertydocument_analyze_ai",
+            ),
+        ]
+        # Custom pattern first — otherwise Django's own <path:object_id>/
+        # catch-all could swallow it before it's reached.
+        return custom + urls
+
+    def analyze_document_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        document = get_object_or_404(PropertyDocument, pk=object_id)
+        if not self.has_change_permission(request, document):
+            return HttpResponseForbidden()
+
+        services.analyze_document(document)
+        document.refresh_from_db()
+        self.message_user(request, document.get_verification_status_display())
+        return redirect(reverse("admin:investment_propertydocument_change", args=[document.pk]))
 
 
 @admin.register(Evidence)

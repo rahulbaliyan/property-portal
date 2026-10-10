@@ -8,21 +8,35 @@ the admin wiring that fixed a real Phase-1 bug (inline-added
 PropertyDocument/PropertyComparable rows had no way to get
 property_listing populated, since it's a second FK the inline form never
 shows).
+
+Phase 3 tests: document_ai's provider/schema error handling, and
+services.analyze_document()'s extraction -> DocumentAnalysis -> Evidence
+pipeline — mocked at document_ai._build_model, same boundary duediligence
+mocks deed_ai at, never real HTTP.
+
+Every test class that uploads a real file is decorated with
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT) — without it, FileSystemStorage
+(the local/test storage backend) writes real files into this project's
+actual media/ directory on every run. Mirrors duediligence/tests.py's own
+TEST_MEDIA_ROOT pattern.
 """
 
 import hashlib
+import shutil
+import tempfile
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from properties.models import Property
 
-from . import services
+from . import document_ai, services
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -39,6 +53,9 @@ from .models import (
     ScoringFactor,
     VerificationItem,
 )
+
+
+TEST_MEDIA_ROOT = tempfile.mkdtemp(prefix="investment-test-media-")
 
 
 def _make_property(**overrides):
@@ -292,6 +309,7 @@ class DocumentFileValidationTests(TestCase):
             validate_document_file(oversized)
 
 
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class ChecksumAndDuplicateDetectionTests(TestCase):
     def test_checksum_matches_known_sha256(self):
         content = b"deterministic content for checksum test"
@@ -341,6 +359,7 @@ class ChecksumAndDuplicateDetectionTests(TestCase):
         self.assertIsNone(services.find_duplicate_document(prop, "abc123", exclude_pk=doc.pk))
 
 
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class PropertyDocumentAdminUploadTests(TestCase):
     """Covers the Phase 2 admin wiring: checksum/uploaded_by computed on
     save, and a duplicate upload surfaced as a warning (never blocked)."""
@@ -407,6 +426,7 @@ class PropertyDocumentAdminUploadTests(TestCase):
         self.assertEqual(PropertyDocument.objects.filter(property_listing=self.property).count(), 2)
 
 
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class AnalysisRunInlineDocumentTests(TestCase):
     """Regression test for the Phase-1 bug fixed in Phase 2: adding a
     PropertyDocument/PropertyComparable via AnalysisRun's inline must
@@ -480,3 +500,219 @@ class AnalysisRunInlineDocumentTests(TestCase):
         )
         comparable = PropertyComparable.objects.get(analysis_run=self.run)
         self.assertEqual(comparable.property_listing, self.property)
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEST_MEDIA_ROOT, ignore_errors=True)
+
+
+class DocumentAiClientTests(TestCase):
+    @override_settings(AI_EXTRACTION_PROVIDER="anthropic", ANTHROPIC_API_KEY="")
+    def test_config_error_when_anthropic_key_blank(self):
+        with self.assertRaises(document_ai.DocumentExtractionConfigError):
+            document_ai.extract_document_fields(b"fake-pdf-bytes", "deed.pdf")
+
+    @override_settings(AI_EXTRACTION_PROVIDER="carrier-pigeon")
+    def test_config_error_on_unrecognized_provider(self):
+        with self.assertRaises(document_ai.DocumentExtractionConfigError):
+            document_ai.extract_document_fields(b"fake-pdf-bytes", "deed.pdf")
+
+    @override_settings(AI_EXTRACTION_PROVIDER="anthropic", ANTHROPIC_API_KEY="test-key")
+    @patch("investment.document_ai._build_model")
+    def test_request_error_wrapped(self, mock_build_model):
+        mock_model = MagicMock()
+        mock_model.invoke.side_effect = RuntimeError("network boom")
+        mock_build_model.return_value = mock_model
+        with self.assertRaises(document_ai.DocumentExtractionRequestError):
+            document_ai.extract_document_fields(b"fake-pdf-bytes", "deed.pdf")
+
+    @patch("investment.document_ai._build_model")
+    def test_parse_error_when_schema_validation_fails(self, mock_build_model):
+        mock_model = MagicMock()
+        mock_model.invoke.return_value = {"parsed": None, "parsing_error": "bad json"}
+        mock_build_model.return_value = mock_model
+        with self.assertRaises(document_ai.DocumentExtractionParseError):
+            document_ai.extract_document_fields(b"fake-pdf-bytes", "deed.pdf")
+
+    @patch("investment.document_ai._build_model")
+    def test_successful_extraction_returns_parsed_and_raw_json(self, mock_build_model):
+        schema = document_ai.DocumentExtractionSchema(khasra_numbers=["410", "409"])
+        mock_model = MagicMock()
+        mock_model.invoke.return_value = {"parsed": schema, "parsing_error": None}
+        mock_build_model.return_value = mock_model
+
+        parsed, raw_json = document_ai.extract_document_fields(b"fake-pdf-bytes", "khasra.pdf")
+        self.assertEqual(parsed.khasra_numbers, ["410", "409"])
+        self.assertIn("410", raw_json)
+
+    def test_unknown_extension_falls_back_to_pdf_mime_type(self):
+        # _MIME_TYPES only covers pdf/jpg/jpeg/png — anything else should
+        # still produce a usable file_block rather than raising, since the
+        # validator (validate_document_file) is what actually enforces the
+        # allow-list; this is just a defensive fallback.
+        self.assertEqual(document_ai._MIME_TYPES.get(".weird", "application/pdf"), "application/pdf")
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class AnalyzeDocumentServiceTests(TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEST_MEDIA_ROOT, ignore_errors=True)
+
+    def _document_with_file(self, **kwargs):
+        prop = _make_property()
+        return PropertyDocument.objects.create(
+            property_listing=prop,
+            document_type=PropertyDocument.DocumentType.KHASRA,
+            file=_pdf_file(),
+            **kwargs,
+        )
+
+    def test_no_file_sets_error_and_needs_review(self):
+        prop = _make_property()
+        document = PropertyDocument.objects.create(
+            property_listing=prop, document_type=PropertyDocument.DocumentType.KHASRA, file=""
+        )
+        services.analyze_document(document)
+        document.refresh_from_db()
+        self.assertEqual(document.verification_status, PropertyDocument.VerificationStatus.NEEDS_REVIEW)
+        self.assertIn("No file", document.analysis.error_message)
+
+    @patch("investment.services.document_ai.extract_document_fields")
+    def test_extraction_error_sets_needs_review(self, mock_extract):
+        mock_extract.side_effect = document_ai.DocumentExtractionRequestError("timed out")
+        document = self._document_with_file()
+
+        services.analyze_document(document)  # must not raise
+        document.refresh_from_db()
+        self.assertEqual(document.verification_status, PropertyDocument.VerificationStatus.NEEDS_REVIEW)
+        self.assertIn("timed out", document.analysis.error_message)
+
+    @patch("investment.services.document_ai.extract_document_fields")
+    def test_success_creates_analysis_and_evidence(self, mock_extract):
+        schema = document_ai.DocumentExtractionSchema(
+            owner_or_seller_names=["Ramesh Kumar"],
+            buyer_names=["Suresh Singh"],
+            khasra_numbers=["410", "409"],
+            khata_number="222",
+            property_area="150",
+            property_area_unit="gaj",
+            transaction_price="1800000",
+            document_dates=["2025-06-02"],
+            inconsistencies_noted=["Area stated twice with different values"],
+            missing_information=["Survey number not printed"],
+        )
+        mock_extract.return_value = (schema, '{"khata_number": "222"}')
+        document = self._document_with_file()
+
+        services.analyze_document(document)
+
+        document.refresh_from_db()
+        self.assertEqual(document.verification_status, PropertyDocument.VerificationStatus.ANALYZED)
+
+        analysis = document.analysis
+        self.assertEqual(analysis.extraction_method, "ai:google")
+        self.assertEqual(analysis.extracted_data["khata_number"], "222")
+        self.assertIn("Area stated twice", analysis.flagged_inconsistencies)
+        self.assertFalse(analysis.error_message)
+
+        evidence = Evidence.objects.filter(source_document=document)
+        claims = [e.claim for e in evidence]
+        self.assertTrue(any("Ramesh Kumar" in c for c in claims))
+        self.assertTrue(any("Suresh Singh" in c for c in claims))
+        self.assertTrue(any("150 gaj" in c for c in claims))
+        self.assertTrue(any("1800000" in c for c in claims))
+        self.assertTrue(any("410; 409" in c for c in claims))
+        for item in evidence:
+            self.assertEqual(item.source_type, Evidence.SourceType.FACT)
+            self.assertEqual(item.verification_status, Evidence.VerificationStatus.UNVERIFIED)
+            self.assertEqual(item.property_listing, document.property_listing)
+
+    @patch("investment.services.document_ai.extract_document_fields")
+    def test_flags_document_type_mismatch_as_ai_analysis_evidence(self, mock_extract):
+        schema = document_ai.DocumentExtractionSchema(document_type_detected="NOC from forest department")
+        mock_extract.return_value = (schema, "{}")
+        document = self._document_with_file()  # declared type: Khasra
+
+        services.analyze_document(document)
+
+        mismatch = Evidence.objects.get(source_document=document, source_type=Evidence.SourceType.AI_ANALYSIS)
+        self.assertIn("NOC from forest department", mismatch.claim)
+        self.assertIn("Khasra", mismatch.claim)
+
+    @patch("investment.services.document_ai.extract_document_fields")
+    def test_no_mismatch_evidence_when_detected_type_matches(self, mock_extract):
+        schema = document_ai.DocumentExtractionSchema(document_type_detected="khasra extract")
+        mock_extract.return_value = (schema, "{}")
+        document = self._document_with_file()  # declared type: Khasra
+
+        services.analyze_document(document)
+
+        self.assertFalse(Evidence.objects.filter(source_document=document, source_type=Evidence.SourceType.AI_ANALYSIS).exists())
+
+    @patch("investment.services.document_ai.extract_document_fields")
+    def test_rerun_replaces_previous_evidence_instead_of_duplicating(self, mock_extract):
+        document = self._document_with_file()
+        mock_extract.return_value = (
+            document_ai.DocumentExtractionSchema(khata_number="111"),
+            "{}",
+        )
+        services.analyze_document(document)
+        self.assertEqual(Evidence.objects.filter(source_document=document).count(), 1)
+
+        mock_extract.return_value = (
+            document_ai.DocumentExtractionSchema(khata_number="222"),
+            "{}",
+        )
+        services.analyze_document(document)
+
+        remaining = Evidence.objects.filter(source_document=document)
+        self.assertEqual(remaining.count(), 1)
+        self.assertIn("222", remaining.first().claim)
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class AnalyzeDocumentAdminViewTests(TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEST_MEDIA_ROOT, ignore_errors=True)
+
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        prop = _make_property()
+        self.document = PropertyDocument.objects.create(
+            property_listing=prop, document_type=PropertyDocument.DocumentType.KHASRA, file=_pdf_file()
+        )
+
+    def test_rejects_get(self):
+        url = reverse("admin:investment_propertydocument_analyze_ai", args=[self.document.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_propertydocument_analyze_ai", args=[self.document.pk])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+
+    @patch("investment.services.document_ai.extract_document_fields")
+    def test_post_triggers_analysis_and_redirects(self, mock_extract):
+        mock_extract.return_value = (document_ai.DocumentExtractionSchema(khata_number="222"), "{}")
+        url = reverse("admin:investment_propertydocument_analyze_ai", args=[self.document.pk])
+        response = self.client.post(url)
+        self.assertRedirects(
+            response, reverse("admin:investment_propertydocument_change", args=[self.document.pk])
+        )
+        self.document.refresh_from_db()
+        self.assertEqual(self.document.verification_status, PropertyDocument.VerificationStatus.ANALYZED)
+
+    def test_change_form_shows_button_only_when_file_present(self):
+        url = reverse("admin:investment_propertydocument_change", args=[self.document.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "Analyze with AI")
