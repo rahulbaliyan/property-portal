@@ -27,6 +27,8 @@ from properties.models import CLOUDINARY_IMAGE_BACKEND, Property
 ALLOWED_DOCUMENT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 # Larger than properties.models.MAX_IMAGE_UPLOAD_BYTES (10 MB) — a
 # multi-page scanned deed PDF runs bigger than a single phone photo.
+# This is a storage cap only — AI_ANALYSIS_MAX_BYTES (services.py) governs
+# what "Analyze with AI" will actually attempt to process.
 MAX_DOCUMENT_UPLOAD_BYTES = 20 * 1024 * 1024
 
 

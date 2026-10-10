@@ -618,6 +618,23 @@ class AnalyzeDocumentServiceTests(TestCase):
         self.assertIn("No file", document.analysis.error_message)
 
     @patch("investment.services.document_ai.extract_document_fields")
+    def test_oversized_file_rejected_before_reading(self, mock_extract):
+        # Regression guard: a real 7.7MB production upload OOM-killed the
+        # single 512MB worker when read into memory for the AI call — this
+        # must be rejected via the cheap .file.size check before ever
+        # opening the file, so extract_document_fields is never called.
+        prop = _make_property()
+        oversized = _pdf_file("big.pdf", b"x" * (services.AI_ANALYSIS_MAX_BYTES + 1))
+        document = PropertyDocument.objects.create(
+            property_listing=prop, document_type=PropertyDocument.DocumentType.KHASRA, file=oversized
+        )
+        services.analyze_document(document)
+        document.refresh_from_db()
+        self.assertEqual(document.verification_status, PropertyDocument.VerificationStatus.NEEDS_REVIEW)
+        self.assertIn("MB", document.analysis.error_message)
+        mock_extract.assert_not_called()
+
+    @patch("investment.services.document_ai.extract_document_fields")
     def test_extraction_error_sets_needs_review(self, mock_extract):
         mock_extract.side_effect = document_ai.DocumentExtractionRequestError("timed out")
         document = self._document_with_file()

@@ -20,6 +20,11 @@ from django.utils import timezone
 from . import document_ai
 from .models import DocumentAnalysis, Evidence, PropertyDocument
 
+# Separate, smaller cap than models.MAX_DOCUMENT_UPLOAD_BYTES (20MB):
+# reading a file into memory and base64-encoding it for the AI call risks
+# OOM-killing the single 512MB worker — see analyze_document() below.
+AI_ANALYSIS_MAX_BYTES = 5 * 1024 * 1024
+
 
 def compute_checksum(file) -> str:
     """SHA-256 hex digest of the file's current contents. Leaves the
@@ -134,6 +139,27 @@ def analyze_document(document: PropertyDocument) -> None:
     if not document.file:
         analysis, _ = DocumentAnalysis.objects.get_or_create(document=document)
         analysis.error_message = "No file uploaded."
+        analysis.analyzed_at = timezone.now()
+        analysis.save()
+        document.verification_status = PropertyDocument.VerificationStatus.NEEDS_REVIEW
+        document.save(update_fields=["verification_status"])
+        return
+
+    if document.file.size > AI_ANALYSIS_MAX_BYTES:
+        # Confirmed live against production: reading a 7.7MB file into
+        # memory and base64-encoding it for the AI call (~1.3x its size,
+        # on top of everything else already loaded — LangChain,
+        # Cloudinary SDKs) OOM-killed the single 512MB worker outright —
+        # not a catchable Python exception, the process just died mid-
+        # request. A smaller cap than MAX_DOCUMENT_UPLOAD_BYTES specifically
+        # for the AI call, not for storing/evidencing the document itself.
+        analysis, _ = DocumentAnalysis.objects.get_or_create(document=document)
+        analysis.error_message = (
+            f"File is {document.file.size / 1024 / 1024:.1f} MB — AI analysis is "
+            f"capped at {AI_ANALYSIS_MAX_BYTES // 1024 // 1024} MB on this host to "
+            "avoid crashing the single worker process. The document is still "
+            "stored and can be reviewed manually."
+        )
         analysis.analyzed_at = timezone.now()
         analysis.save()
         document.verification_status = PropertyDocument.VerificationStatus.NEEDS_REVIEW

@@ -18,6 +18,13 @@ from .models import KhasraEntry, KhataLookup, MutationEntry, TitleCheckReport
 
 AREA_MATCH_TOLERANCE = Decimal("0.02")  # ±2%
 
+# Reading a file into memory and base64-encoding it for the AI call risks
+# OOM-killing the single 512MB worker — see extract_deed() below. No
+# existing upload-size limit on deed_pdf to reuse here (unlike
+# investment.models.MAX_DOCUMENT_UPLOAD_BYTES), so this is both the
+# storage-agnostic AND the AI-call-specific cap for this field today.
+AI_ANALYSIS_MAX_BYTES = 5 * 1024 * 1024
+
 _AREA_ENTRY_RE = re.compile(r"([^:;]+):\s*([\d.]+)\s*(वर्ग\s?मीटर|वर्ग\s?मी\.?)")
 
 
@@ -337,6 +344,23 @@ def extract_deed(report: TitleCheckReport) -> None:
     if not report.deed_pdf:
         report.extraction_status = TitleCheckReport.ExtractionStatus.ERROR
         report.extraction_error = "No deed PDF uploaded."
+        report.extracted_at = timezone.now()
+        report.save()
+        return
+
+    if report.deed_pdf.size > AI_ANALYSIS_MAX_BYTES:
+        # Confirmed live in production (investment app, same AI-call
+        # shape): reading a multi-MB file into memory and base64-encoding
+        # it for the AI call OOM-killed the single 512MB worker outright —
+        # not a catchable Python exception, the process just died
+        # mid-request. Checked via .size (cheap) before ever opening the
+        # file, so the dangerous read never happens at all.
+        report.extraction_status = TitleCheckReport.ExtractionStatus.ERROR
+        report.extraction_error = (
+            f"Deed PDF is {report.deed_pdf.size / 1024 / 1024:.1f} MB — AI "
+            f"extraction is capped at {AI_ANALYSIS_MAX_BYTES // 1024 // 1024} MB "
+            "on this host to avoid crashing the single worker process."
+        )
         report.extracted_at = timezone.now()
         report.save()
         return

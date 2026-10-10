@@ -687,6 +687,22 @@ class ExtractDeedServiceTests(TestCase):
         self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.ERROR)
         self.assertIn("No deed PDF", report.extraction_error)
 
+    @patch("duediligence.services.deed_ai.extract_deed_fields")
+    def test_oversized_pdf_rejected_before_reading(self, mock_extract):
+        # Regression guard: a real 7.7MB production upload OOM-killed the
+        # single 512MB worker when read into memory for the AI call — this
+        # must be rejected via the cheap .size check before ever opening
+        # the file, so extract_deed_fields is never even called.
+        oversized = SimpleUploadedFile(
+            "deed.pdf", b"x" * (services.AI_ANALYSIS_MAX_BYTES + 1), content_type="application/pdf"
+        )
+        report = TitleCheckReport.objects.create(deed_pdf=oversized)
+        services.extract_deed(report)
+        report.refresh_from_db()
+        self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.ERROR)
+        self.assertIn("MB", report.extraction_error)
+        mock_extract.assert_not_called()
+
     def test_pdf_read_failure_sets_error_status_instead_of_raising(self):
         report = self._report_with_pdf()
         with patch.object(TitleCheckReport.deed_pdf.field.attr_class, "open", side_effect=OSError("connection reset")):
