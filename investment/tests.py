@@ -37,7 +37,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from duediligence.models import KhasraEntry, KhataLookup, MutationEntry, TitleCheckReport
@@ -2214,3 +2214,136 @@ class StaffReportPageTests(TestCase):
         url = reverse("investment:report", args=[self.run.pk])
         response = self.client.get(url)
         self.assertContains(response, f"{self.run.score.overall_score}/100")
+
+
+class ApiAuthTests(TestCase):
+    """One representative endpoint stands in for all five here — the
+    @staff_member_required wiring is identical across api.py."""
+
+    def setUp(self):
+        self.property = _make_property()
+
+    def test_anonymous_redirected_to_login(self):
+        url = reverse("investment:api_property_analysis", args=[self.property.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login/", response.url)
+
+    def test_non_staff_redirected(self):
+        get_user_model().objects.create_user(username="nobody", password="pw", is_staff=False)
+        self.client.login(username="nobody", password="pw")
+        url = reverse("investment:api_property_analysis", args=[self.property.pk])
+        self.assertEqual(self.client.get(url).status_code, 302)
+
+
+class ApiReadEndpointsTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.property = _make_property()
+
+    def test_analysis_404_when_no_run_exists(self):
+        url = reverse("investment:api_property_analysis", args=[self.property.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_analysis_404_for_missing_property(self):
+        url = reverse("investment:api_property_analysis", args=[999999])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_analysis_returns_full_shape(self):
+        run = AnalysisRun.objects.create(property_listing=self.property)
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP,
+            status=DueDiligenceCheck.Status.PASS, notes="Matched.",
+        )
+        PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.LEGAL,
+            severity=PropertyRisk.Severity.LOW, reason="Minor.",
+        )
+        scoring.compute_score(run)
+
+        url = reverse("investment:api_property_analysis", args=[self.property.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        data = response.json()
+        self.assertEqual(data["id"], run.pk)
+        self.assertEqual(len(data["due_diligence_checks"]), 1)
+        self.assertEqual(data["due_diligence_checks"][0]["notes"], "Matched.")
+        self.assertEqual(len(data["risks"]), 1)
+        self.assertIsNotNone(data["score"])
+        # legal_documentation (30% weight) scores 100 from the one PASS
+        # check; the other six categories sit at the neutral default (50):
+        # 100*0.30 + 50*0.70 = 65.
+        self.assertEqual(data["score"]["overall_score"], 65)
+
+    def test_analysis_rejects_post(self):
+        AnalysisRun.objects.create(property_listing=self.property)
+        url = reverse("investment:api_property_analysis", args=[self.property.pk])
+        self.assertEqual(self.client.post(url).status_code, 405)
+
+    def test_score_endpoint_null_when_no_run(self):
+        url = reverse("investment:api_property_score", args=[self.property.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["score"])
+
+    def test_risks_endpoint_empty_list_when_no_run(self):
+        url = reverse("investment:api_property_risks", args=[self.property.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.json()["risks"], [])
+
+    def test_comparables_endpoint_lists_real_comparable(self):
+        run = AnalysisRun.objects.create(property_listing=self.property)
+        PropertyComparable.objects.create(
+            property_listing=self.property, analysis_run=run,
+            title="Danda Lakhaund", price=Decimal("1800000"), area_value=Decimal("94.23"),
+            area_unit=Property.AreaUnit.SQM, is_verified_transaction=True,
+        )
+        url = reverse("investment:api_property_comparables", args=[self.property.pk])
+        response = self.client.get(url)
+        data = response.json()
+        self.assertEqual(len(data["comparables"]), 1)
+        self.assertEqual(data["comparables"][0]["title"], "Danda Lakhaund")
+        self.assertTrue(data["comparables"][0]["is_verified_transaction"])
+
+
+class ApiAnalyzeEndpointTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.property = _make_property()
+
+    def test_creates_a_run_when_none_exists(self):
+        url = reverse("investment:api_property_analyze", args=[self.property.pk])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        run = AnalysisRun.objects.get(property_listing=self.property)
+        self.assertEqual(data["id"], run.pk)
+        self.assertEqual(run.created_by, self.user)
+        self.assertIsNotNone(data["score"])  # pipeline ran
+
+    def test_reuses_existing_run_instead_of_creating_another(self):
+        run = AnalysisRun.objects.create(property_listing=self.property)
+        url = reverse("investment:api_property_analyze", args=[self.property.pk])
+        self.client.post(url)
+        second_response = self.client.post(url)
+        self.assertEqual(AnalysisRun.objects.filter(property_listing=self.property).count(), 1)
+        self.assertEqual(second_response.json()["id"], run.pk)
+
+    def test_rejects_get(self):
+        url = reverse("investment:api_property_analyze", args=[self.property.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+
+    def test_csrf_required(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.login(username="staffer", password="pw")
+        url = reverse("investment:api_property_analyze", args=[self.property.pk])
+        response = csrf_client.post(url)
+        self.assertEqual(response.status_code, 403)
