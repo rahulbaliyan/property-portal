@@ -33,6 +33,47 @@ def _analysis_run_change_url(analysis_run):
     return reverse("admin:investment_analysisrun_change", args=[analysis_run.pk])
 
 
+# Fields worth an audit trail when a human overrides an automated finding
+# — Phase 19's explicit ask ("every manual override should be
+# auditable"), previously unfulfilled: FieldOverrideLog has existed since
+# Phase 1 but nothing ever wrote to it. Computed-only fields (scores,
+# extracted data) are admin-readonly already and can't be hand-edited at
+# all, so they need no entry here.
+_AUDITED_FIELDS = {
+    DueDiligenceCheck: ("status", "notes"),
+    PropertyRisk: ("severity", "reason"),
+    Evidence: ("verification_status",),
+}
+
+
+def _log_field_overrides(analysis_run, instance, user):
+    """Compares instance's current DB state against its new in-memory
+    state for each audited field, logging one FieldOverrideLog row per
+    changed field. Must be called BEFORE the save actually happens — an
+    existing pk with a not-yet-flushed change is what lets this read the
+    "previous" value by re-querying."""
+    if analysis_run is None or instance.pk is None:
+        return  # a brand-new row isn't an override of anything
+    tracked_fields = _AUDITED_FIELDS.get(type(instance))
+    if not tracked_fields:
+        return
+    try:
+        previous = type(instance).objects.get(pk=instance.pk)
+    except type(instance).DoesNotExist:
+        return
+    for field_name in tracked_fields:
+        old_value = getattr(previous, field_name)
+        new_value = getattr(instance, field_name)
+        if old_value != new_value:
+            FieldOverrideLog.objects.create(
+                analysis_run=analysis_run,
+                field_name=f"{type(instance).__name__}.{field_name}",
+                previous_value=str(old_value) if old_value else "",
+                new_value=str(new_value) if new_value else "",
+                changed_by=user,
+            )
+
+
 def _prepare_document_before_save(document, request):
     """Checksum must be computed from the file BEFORE it's handed to
     .save() — at this point document.file is still the raw upload (an
@@ -168,6 +209,7 @@ class AnalysisRunAdmin(admin.ModelAdmin):
                 obj.property_listing = form.instance.property_listing
             if formset.model is PropertyDocument:
                 _prepare_document_before_save(obj, request)
+            _log_field_overrides(form.instance, obj, request.user)
             obj.save()
         formset.save_m2m()
 
@@ -388,6 +430,10 @@ class EvidenceAdmin(admin.ModelAdmin):
     @admin.display(description="Claim")
     def claim_preview(self, obj):
         return obj.claim[:80]
+
+    def save_model(self, request, obj, form, change):
+        _log_field_overrides(obj.analysis_run, obj, request.user)
+        super().save_model(request, obj, form, change)
 
 
 class ScoringFactorInline(admin.TabularInline):

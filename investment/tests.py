@@ -1897,3 +1897,168 @@ class CheckDataQualityAdminViewTests(TestCase):
         url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
         response = self.client.get(url)
         self.assertContains(response, "Check Data Quality")
+
+
+class AuditTrailTests(TestCase):
+    """FieldOverrideLog has existed since Phase 1 but nothing ever wrote
+    to it — these cover the Phase 19 wiring that finally populates it
+    whenever a human overrides an automated DueDiligenceCheck/PropertyRisk/
+    Evidence finding."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.property = _make_property()
+        self.run = AnalysisRun.objects.create(property_listing=self.property)
+
+    def _inline_management_form(self, prefix, total=0, initial=0):
+        return {
+            f"{prefix}-TOTAL_FORMS": str(total),
+            f"{prefix}-INITIAL_FORMS": str(initial),
+            f"{prefix}-MIN_NUM_FORMS": "0",
+            f"{prefix}-MAX_NUM_FORMS": "1000",
+        }
+
+    def _base_payload(self):
+        payload = {"property_listing": self.property.pk, "status": AnalysisRun.Status.PENDING}
+        for prefix in (
+            "due_diligence_checks", "risks", "verification_items",
+            "documents", "comparables", "valuation", "score", "override_logs",
+        ):
+            payload.update(self._inline_management_form(prefix))
+        return payload
+
+    def test_overriding_due_diligence_check_status_is_logged(self):
+        check = DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.REGISTRY,
+            status=DueDiligenceCheck.Status.PASS, notes="Automated.",
+        )
+        payload = self._base_payload()
+        payload.update(self._inline_management_form("due_diligence_checks", total=1, initial=1))
+        payload.update(
+            {
+                "due_diligence_checks-0-id": check.pk,
+                "due_diligence_checks-0-analysis_run": self.run.pk,
+                "due_diligence_checks-0-category": DueDiligenceCheck.Category.REGISTRY,
+                "due_diligence_checks-0-status": DueDiligenceCheck.Status.FAIL,
+                "due_diligence_checks-0-notes": "Overridden after manual review.",
+            }
+        )
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, 302, response.content[:2000] if response.status_code != 302 else "")
+
+        log = FieldOverrideLog.objects.get(analysis_run=self.run, field_name="DueDiligenceCheck.status")
+        self.assertEqual(log.previous_value, "pass")
+        self.assertEqual(log.new_value, "fail")
+        self.assertEqual(log.changed_by, self.user)
+        # notes also changed -> its own log entry
+        self.assertTrue(
+            FieldOverrideLog.objects.filter(analysis_run=self.run, field_name="DueDiligenceCheck.notes").exists()
+        )
+
+    def test_unchanged_check_is_not_logged(self):
+        check = DueDiligenceCheck.objects.create(
+            analysis_run=self.run, category=DueDiligenceCheck.Category.REGISTRY,
+            status=DueDiligenceCheck.Status.PASS, notes="Automated.",
+        )
+        payload = self._base_payload()
+        payload.update(self._inline_management_form("due_diligence_checks", total=1, initial=1))
+        payload.update(
+            {
+                "due_diligence_checks-0-id": check.pk,
+                "due_diligence_checks-0-analysis_run": self.run.pk,
+                "due_diligence_checks-0-category": DueDiligenceCheck.Category.REGISTRY,
+                "due_diligence_checks-0-status": DueDiligenceCheck.Status.PASS,
+                "due_diligence_checks-0-notes": "Automated.",
+            }
+        )
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        self.client.post(url, payload)
+        self.assertFalse(FieldOverrideLog.objects.filter(analysis_run=self.run).exists())
+
+    def test_overriding_risk_severity_is_logged(self):
+        risk = PropertyRisk.objects.create(
+            analysis_run=self.run, category=PropertyRisk.Category.LEGAL,
+            severity=PropertyRisk.Severity.HIGH, reason="Automated finding.",
+        )
+        payload = self._base_payload()
+        payload.update(self._inline_management_form("risks", total=1, initial=1))
+        payload.update(
+            {
+                "risks-0-id": risk.pk,
+                "risks-0-analysis_run": self.run.pk,
+                "risks-0-category": PropertyRisk.Category.LEGAL,
+                "risks-0-severity": PropertyRisk.Severity.LOW,
+                "risks-0-reason": "Reviewed and downgraded after manual check.",
+            }
+        )
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, 302, response.content[:2000] if response.status_code != 302 else "")
+
+        log = FieldOverrideLog.objects.get(analysis_run=self.run, field_name="PropertyRisk.severity")
+        self.assertEqual(log.previous_value, "high")
+        self.assertEqual(log.new_value, "low")
+        self.assertEqual(log.changed_by, self.user)
+
+    def test_overriding_evidence_verification_status_is_logged(self):
+        evidence = Evidence.objects.create(
+            property_listing=self.property, analysis_run=self.run,
+            claim="Area is 150 gaj", source_type=Evidence.SourceType.FACT,
+        )
+        self.assertEqual(evidence.verification_status, Evidence.VerificationStatus.UNVERIFIED)
+        url = reverse("admin:investment_evidence_change", args=[evidence.pk])
+        response = self.client.get(url)
+        data = {
+            "property_listing": self.property.pk,
+            "analysis_run": self.run.pk,
+            "claim": evidence.claim,
+            "source_type": evidence.source_type,
+            "source_document": "",
+            "page_number": "",
+            "source_url": "",
+            "extracted_value": "",
+            "verification_status": Evidence.VerificationStatus.VERIFIED,
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 302, response.content[:2000] if response.status_code != 302 else "")
+
+        log = FieldOverrideLog.objects.get(analysis_run=self.run, field_name="Evidence.verification_status")
+        self.assertEqual(log.previous_value, "unverified")
+        self.assertEqual(log.new_value, "verified")
+        self.assertEqual(log.changed_by, self.user)
+
+    def test_evidence_without_analysis_run_is_not_logged(self):
+        # Evidence can exist without a run (see EvidenceTests in this same
+        # file) — FieldOverrideLog.analysis_run is required, so there's
+        # simply nowhere to attach a log entry; must not raise.
+        evidence = Evidence.objects.create(
+            property_listing=self.property, claim="Standalone claim", source_type=Evidence.SourceType.FACT,
+        )
+        url = reverse("admin:investment_evidence_change", args=[evidence.pk])
+        data = {
+            "property_listing": self.property.pk,
+            "analysis_run": "",
+            "claim": evidence.claim,
+            "source_type": evidence.source_type,
+            "source_document": "",
+            "page_number": "",
+            "source_url": "",
+            "extracted_value": "",
+            "verification_status": Evidence.VerificationStatus.VERIFIED,
+        }
+        response = self.client.post(url, data)  # must not raise
+        self.assertEqual(response.status_code, 302, response.content[:2000] if response.status_code != 302 else "")
+        self.assertFalse(FieldOverrideLog.objects.exists())
+
+    def test_override_log_visible_as_readonly_inline_on_analysis_run(self):
+        FieldOverrideLog.objects.create(
+            analysis_run=self.run, field_name="DueDiligenceCheck.status",
+            previous_value="pass", new_value="fail", changed_by=self.user,
+        )
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "DueDiligenceCheck.status")
