@@ -394,6 +394,43 @@ class PropertyDocumentAdminUploadTests(TestCase):
         self.assertTrue(document.checksum)
         self.assertEqual(document.uploaded_by, self.user)
 
+    def test_checksum_computed_before_the_object_is_saved(self):
+        # Regression test for a real production 500: computing the
+        # checksum by reading document.file back AFTER save() works fine
+        # against local FileSystemStorage (every other test here) but
+        # crashed against Cloudinary's raw-resource storage, which
+        # doesn't support re-opening a just-saved file for reading. Must
+        # be computed from the raw upload BEFORE save() instead — this
+        # asserts that invariant directly rather than just the local-only
+        # happy path, which would never have caught the regression.
+        with patch("investment.admin.services.compute_checksum") as mock_checksum:
+            def assert_not_yet_saved(file):
+                document = PropertyDocument.objects.filter(property_listing=self.property).first()
+                self.assertIsNone(document, "checksum must be computed before the row is saved")
+                return "fake-checksum"
+
+            mock_checksum.side_effect = assert_not_yet_saved
+            url = reverse("admin:investment_propertydocument_add")
+            response = self.client.post(
+                url,
+                {
+                    "property_listing": self.property.pk,
+                    "document_type": PropertyDocument.DocumentType.SALE_DEED,
+                    "file": _pdf_file(),
+                    "verification_status": PropertyDocument.VerificationStatus.UPLOADED,
+                    "metadata": "{}",
+                    "analysis-TOTAL_FORMS": "0",
+                    "analysis-INITIAL_FORMS": "0",
+                    "analysis-MIN_NUM_FORMS": "0",
+                    "analysis-MAX_NUM_FORMS": "1",
+                },
+            )
+        self.assertEqual(response.status_code, 302)
+        mock_checksum.assert_called_once()
+        self.assertEqual(
+            PropertyDocument.objects.get(property_listing=self.property).checksum, "fake-checksum"
+        )
+
     def test_duplicate_upload_warns_without_blocking(self):
         existing_checksum = hashlib.sha256(b"same content").hexdigest()
         PropertyDocument.objects.create(

@@ -29,19 +29,22 @@ from .models import (
 )
 
 
-def _finalize_document_upload(document, request):
-    """Shared by PropertyDocumentAdmin.save_model and AnalysisRunAdmin's
-    inline formset save — checksum and uploaded_by must be set the same
-    way regardless of which admin screen the upload came through."""
-    changed = False
+def _prepare_document_before_save(document, request):
+    """Checksum must be computed from the file BEFORE it's handed to
+    .save() — at this point document.file is still the raw upload (an
+    InMemoryUploadedFile/TemporaryUploadedFile), trivially readable
+    regardless of storage backend. Reading it back AFTER save() works
+    fine against local FileSystemStorage (what every test uses) but
+    crashed with a 500 in production: Cloudinary's raw-resource storage
+    doesn't support re-opening a just-saved file for reading. Confirmed
+    against a real production upload."""
     if not document.uploaded_by_id:
         document.uploaded_by = request.user
-        changed = True
     if document.file and not document.checksum:
         document.checksum = services.compute_checksum(document.file)
-        changed = True
-    if changed:
-        document.save()
+
+
+def _duplicate_after_save(document):
     return services.find_duplicate_document(
         document.property_listing, document.checksum, exclude_pk=document.pk
     )
@@ -136,13 +139,14 @@ class AnalysisRunAdmin(admin.ModelAdmin):
         for obj in instances:
             if hasattr(obj, "property_listing_id") and not obj.property_listing_id:
                 obj.property_listing = form.instance.property_listing
+            if formset.model is PropertyDocument:
+                _prepare_document_before_save(obj, request)
             obj.save()
         formset.save_m2m()
 
         if formset.model is PropertyDocument:
             for obj in instances:
-                duplicate = _finalize_document_upload(obj, request)
-                _warn_if_duplicate(self, request, obj, duplicate)
+                _warn_if_duplicate(self, request, obj, _duplicate_after_save(obj))
 
 
 class DocumentAnalysisInline(admin.StackedInline):
@@ -174,9 +178,9 @@ class PropertyDocumentAdmin(admin.ModelAdmin):
     change_form_template = "admin/investment/propertydocument/change_form.html"
 
     def save_model(self, request, obj, form, change):
+        _prepare_document_before_save(obj, request)
         super().save_model(request, obj, form, change)
-        duplicate = _finalize_document_upload(obj, request)
-        _warn_if_duplicate(self, request, obj, duplicate)
+        _warn_if_duplicate(self, request, obj, _duplicate_after_save(obj))
 
     def get_urls(self):
         urls = super().get_urls()
