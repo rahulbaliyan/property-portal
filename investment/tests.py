@@ -42,7 +42,7 @@ from django.urls import reverse
 from duediligence.models import KhasraEntry, KhataLookup, MutationEntry, TitleCheckReport
 from properties.models import Property
 
-from . import ai_analyst, document_ai, due_diligence, risk_engine, scoring, services, valuation
+from . import ai_analyst, document_ai, due_diligence, location_intelligence, risk_engine, scoring, services, valuation
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -1523,3 +1523,180 @@ class ComputeValuationAdminViewTests(TestCase):
         url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
         response = self.client.get(url)
         self.assertContains(response, "Compute Valuation")
+
+
+class HaversineDistanceTests(TestCase):
+    def test_identical_points_are_zero_km_apart(self):
+        self.assertEqual(location_intelligence._haversine_km(30.358044, 78.102189, 30.358044, 78.102189), 0.0)
+
+    def test_known_distance_is_approximately_correct(self):
+        # Dehradun railway station to Mussoorie library chowk, ~30km by
+        # straight line — a real-world sanity check on the formula, not
+        # an exact fixture.
+        km = location_intelligence._haversine_km(30.3165, 78.0322, 30.4598, 78.0664)
+        self.assertAlmostEqual(km, 16.2, delta=2)
+
+
+class FetchNearbyPlacesTests(TestCase):
+    @override_settings(GOOGLE_MAPS_API_KEY="")
+    def test_config_error_when_key_blank(self):
+        with self.assertRaises(location_intelligence.LocationIntelligenceConfigError):
+            location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.requests.get")
+    def test_request_exception_wrapped(self, mock_get):
+        import requests as requests_module
+
+        mock_get.side_effect = requests_module.RequestException("network boom")
+        with self.assertRaises(location_intelligence.LocationIntelligenceRequestError):
+            location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.requests.get")
+    def test_non_ok_status_raises(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200, json=lambda: {"status": "REQUEST_DENIED", "error_message": "bad key"}
+        )
+        with self.assertRaises(location_intelligence.LocationIntelligenceRequestError):
+            location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.requests.get")
+    def test_zero_results_returns_empty_list(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "ZERO_RESULTS", "results": []})
+        places = location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
+        self.assertEqual(places, [])
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.requests.get")
+    def test_successful_response_parsed_and_sorted_by_distance(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "status": "OK",
+                "results": [
+                    {"name": "Far School", "vicinity": "Far Rd", "geometry": {"location": {"lat": 30.40, "lng": 78.20}}},
+                    {"name": "Near School", "vicinity": "Near Rd", "geometry": {"location": {"lat": 30.359, "lng": 78.103}}},
+                ],
+            },
+        )
+        places = location_intelligence.fetch_nearby_places(30.358044, 78.102189, "school")
+        self.assertEqual(len(places), 2)
+        self.assertEqual(places[0]["name"], "Near School")  # sorted nearest-first
+        self.assertLess(places[0]["distance_km"], places[1]["distance_km"])
+
+
+class AnalyzeLocationTests(TestCase):
+    def test_no_coordinates_leaves_pending_verification(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        location_intelligence.analyze_location(run)
+        check = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LOCATION)
+        self.assertEqual(check.status, DueDiligenceCheck.Status.PENDING_VERIFICATION)
+        self.assertIn("latitude/longitude", check.notes)
+
+    @override_settings(GOOGLE_MAPS_API_KEY="")
+    def test_not_configured_leaves_pending_verification(self):
+        prop = _make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+        location_intelligence.analyze_location(run)
+        check = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LOCATION)
+        self.assertEqual(check.status, DueDiligenceCheck.Status.PENDING_VERIFICATION)
+        self.assertIn("GOOGLE_MAPS_API_KEY", check.notes)
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.fetch_nearby_places")
+    def test_successful_fetch_passes_and_creates_evidence(self, mock_fetch):
+        mock_fetch.return_value = [{"name": "City Hospital", "address": "Main Rd", "distance_km": 1.2}]
+        prop = _make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        location_intelligence.analyze_location(run)
+
+        check = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LOCATION)
+        self.assertEqual(check.status, DueDiligenceCheck.Status.PASS)
+        evidence = Evidence.objects.filter(analysis_run=run, claim__startswith="Nearby ")
+        self.assertEqual(evidence.count(), len(location_intelligence.PLACE_TYPES))
+        self.assertTrue(any("City Hospital" in e.claim for e in evidence))
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.fetch_nearby_places")
+    def test_no_results_anywhere_sets_warning(self, mock_fetch):
+        mock_fetch.return_value = []
+        prop = _make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        location_intelligence.analyze_location(run)
+
+        check = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LOCATION)
+        self.assertEqual(check.status, DueDiligenceCheck.Status.WARNING)
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.fetch_nearby_places")
+    def test_all_requests_failing_sets_pending_verification(self, mock_fetch):
+        mock_fetch.side_effect = location_intelligence.LocationIntelligenceRequestError("quota exceeded")
+        prop = _make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        location_intelligence.analyze_location(run)  # must not raise
+
+        check = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LOCATION)
+        self.assertEqual(check.status, DueDiligenceCheck.Status.PENDING_VERIFICATION)
+        self.assertIn("quota exceeded", check.notes)
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-key")
+    @patch("investment.location_intelligence.fetch_nearby_places")
+    def test_rerun_replaces_evidence_instead_of_duplicating(self, mock_fetch):
+        mock_fetch.return_value = [{"name": "City Hospital", "address": "Main Rd", "distance_km": 1.2}]
+        prop = _make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        location_intelligence.analyze_location(run)
+        location_intelligence.analyze_location(run)
+
+        evidence = Evidence.objects.filter(analysis_run=run, claim__startswith="Nearby ")
+        self.assertEqual(evidence.count(), len(location_intelligence.PLACE_TYPES))
+
+
+class ScoringReadsLocationTests(TestCase):
+    def test_location_score_has_signal_once_analyzed(self):
+        prop = _make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        run = AnalysisRun.objects.create(property_listing=prop)
+        DueDiligenceCheck.objects.create(
+            analysis_run=run, category=DueDiligenceCheck.Category.LOCATION, status=DueDiligenceCheck.Status.PASS
+        )
+        score, has_signal = scoring._category_score_from_checks(run, [DueDiligenceCheck.Category.LOCATION])
+        self.assertTrue(has_signal)
+        self.assertEqual(score, 100)
+
+
+class AnalyzeLocationAdminViewTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.run = AnalysisRun.objects.create(
+            property_listing=_make_property(latitude=Decimal("30.358044"), longitude=Decimal("78.102189"))
+        )
+
+    def test_requires_post(self):
+        url = reverse("admin:investment_analysisrun_analyze_location", args=[self.run.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+
+    def test_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_analysisrun_analyze_location", args=[self.run.pk])
+        self.assertEqual(self.client.post(url).status_code, 302)
+
+    @override_settings(GOOGLE_MAPS_API_KEY="")
+    def test_post_runs_and_redirects(self):
+        url = reverse("admin:investment_analysisrun_analyze_location", args=[self.run.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+        self.assertTrue(DueDiligenceCheck.objects.filter(analysis_run=self.run, category="location").exists())
+
+    def test_change_form_shows_button(self):
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "Analyze Location")

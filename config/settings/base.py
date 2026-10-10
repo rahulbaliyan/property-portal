@@ -223,3 +223,12 @@ GOOGLE_API_KEY = env("GOOGLE_API_KEY", default="")
 # configured for deed extraction — using it for a second purpose
 # shouldn't happen silently. See core/content_review.py.
 AI_CONTENT_REVIEW_ENABLED = env.bool("AI_CONTENT_REVIEW_ENABLED", default=False)
+
+# Location intelligence (investment app's Phase 9) — nearby schools/
+# hospitals/transit/commercial areas around a property. Separate key from
+# every AI provider above; from console.cloud.google.com -> APIs &
+# Services -> Credentials, with the Places API enabled on that project.
+# Blank by default, same graceful-degradation pattern as every other
+# optional integration here — the feature simply reports "not configured"
+# until this is set, rather than breaking.
+GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")
