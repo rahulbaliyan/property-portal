@@ -42,7 +42,7 @@ from django.urls import reverse
 from duediligence.models import KhasraEntry, KhataLookup, MutationEntry, TitleCheckReport
 from properties.models import Property
 
-from . import ai_analyst, document_ai, due_diligence, risk_engine, scoring, services
+from . import ai_analyst, document_ai, due_diligence, risk_engine, scoring, services, valuation
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -1340,3 +1340,186 @@ class ReportViewTests(TestCase):
         self.assertContains(response, "Minor note.")
         self.assertContains(response, "Area is 150 gaj")
         self.assertContains(response, f"{self.run.score.overall_score}/100")
+
+
+class PricePerSqmTests(TestCase):
+    """Real worked example: 94.23 sqm for Rs. 18,00,000 (the Danda
+    Lakhaund deed) and 108.70 sqm for Rs. 20,55,000 (the Jagaatkhana
+    deed) — two real, nearby, comparable transactions."""
+
+    def test_sqm_is_identity(self):
+        result = valuation._price_per_sqm(Decimal("1800000"), Decimal("94.23"), Property.AreaUnit.SQM)
+        self.assertEqual(result, (Decimal("1800000") / Decimal("94.23")).quantize(Decimal("0.01")))
+
+    def test_sqft_converts_correctly(self):
+        # 1014 sqft is the deed's own stated sqft-equivalent of 94.23 sqm.
+        result = valuation._price_per_sqm(Decimal("1800000"), Decimal("1014"), Property.AreaUnit.SQFT)
+        # Should be close to the direct sqm calculation (~19,100/sqm) —
+        # the deed's own sqft figure is itself a rounded conversion.
+        self.assertAlmostEqual(float(result), 19100, delta=50)
+
+    def test_gaj_is_not_converted(self):
+        # 112.66 gaj is the deed's own stated gaj-equivalent — deliberately
+        # excluded, same principle as bigha/nali in duediligence.
+        result = valuation._price_per_sqm(Decimal("1800000"), Decimal("112.66"), Property.AreaUnit.GAJ)
+        self.assertIsNone(result)
+
+    def test_zero_area_does_not_crash(self):
+        self.assertIsNone(valuation._price_per_sqm(Decimal("1800000"), Decimal("0"), Property.AreaUnit.SQM))
+
+    def test_missing_price_or_area_returns_none(self):
+        self.assertIsNone(valuation._price_per_sqm(None, Decimal("100"), Property.AreaUnit.SQM))
+        self.assertIsNone(valuation._price_per_sqm(Decimal("100"), None, Property.AreaUnit.SQM))
+
+
+class ComputeValuationTests(TestCase):
+    def _comparable(self, run, price, area_value, area_unit=Property.AreaUnit.SQM, **kwargs):
+        return PropertyComparable.objects.create(
+            property_listing=run.property_listing, analysis_run=run,
+            price=price, area_value=area_value, area_unit=area_unit, **kwargs
+        )
+
+    def test_no_comparables_leaves_valuation_empty(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        result = valuation.compute_valuation(run)
+        self.assertEqual(result.comparable_count, 0)
+        self.assertIsNone(result.median_comparable_price_per_unit)
+        self.assertIn("No comparable properties", result.methodology_notes)
+
+    def test_two_real_comparables_produce_median_and_range(self):
+        # The two real deeds from this session: Jagaatkhana (the target
+        # property) and Danda Lakhaund (its comparable).
+        prop = _make_property(title="Jagaatkhana", price=Decimal("2055000"), area_value=Decimal("108.70"), area_unit=Property.AreaUnit.SQM)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        self._comparable(
+            run, price=Decimal("1800000"), area_value=Decimal("94.23"),
+            is_verified_transaction=True, source="Danda Lakhaund sale deed, 02-Jun-2025",
+        )
+
+        result = valuation.compute_valuation(run)
+
+        self.assertEqual(result.comparable_count, 1)
+        expected_per_sqm = (Decimal("1800000") / Decimal("94.23")).quantize(Decimal("0.01"))
+        self.assertEqual(result.median_comparable_price_per_unit, expected_per_sqm)
+        self.assertEqual(result.lower_range_price_per_unit, expected_per_sqm)
+        self.assertEqual(result.upper_range_price_per_unit, expected_per_sqm)
+
+        expected_asking = (Decimal("2055000") / Decimal("108.70")).quantize(Decimal("0.01"))
+        self.assertEqual(result.asking_price_per_unit, expected_asking)
+        self.assertIsNotNone(result.premium_discount_percent)
+
+    def test_median_of_three_comparables(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        self._comparable(run, price=Decimal("1000000"), area_value=Decimal("100"))  # 10000/sqm
+        self._comparable(run, price=Decimal("1500000"), area_value=Decimal("100"))  # 15000/sqm
+        self._comparable(run, price=Decimal("2000000"), area_value=Decimal("100"))  # 20000/sqm
+
+        result = valuation.compute_valuation(run)
+        self.assertEqual(result.median_comparable_price_per_unit, Decimal("15000.00"))
+        self.assertEqual(result.lower_range_price_per_unit, Decimal("10000.00"))
+        self.assertEqual(result.upper_range_price_per_unit, Decimal("20000.00"))
+
+    def test_gaj_comparable_excluded_from_statistics_but_noted(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        self._comparable(run, price=Decimal("1800000"), area_value=Decimal("112.66"), area_unit=Property.AreaUnit.GAJ)
+
+        result = valuation.compute_valuation(run)
+        self.assertEqual(result.comparable_count, 0)
+        self.assertIn("Gaj", result.methodology_notes)
+        self.assertIn("excluded", result.methodology_notes)
+
+    def test_unverified_comparable_noted_in_methodology(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        self._comparable(run, price=Decimal("1800000"), area_value=Decimal("94.23"), is_verified_transaction=False)
+
+        result = valuation.compute_valuation(run)
+        self.assertIn("unverified listing", result.methodology_notes)
+
+    def test_premium_when_asking_above_median(self):
+        prop = _make_property(price=Decimal("3000000"), area_value=Decimal("100"), area_unit=Property.AreaUnit.SQM)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        self._comparable(run, price=Decimal("2000000"), area_value=Decimal("100"))  # 20000/sqm median
+
+        result = valuation.compute_valuation(run)
+        self.assertGreater(result.premium_discount_percent, 0)  # asking 30000/sqm > median 20000/sqm
+
+    def test_rerun_updates_instead_of_duplicating(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        self._comparable(run, price=Decimal("1800000"), area_value=Decimal("94.23"))
+        valuation.compute_valuation(run)
+        valuation.compute_valuation(run)
+        self.assertEqual(PropertyValuation.objects.filter(analysis_run=run).count(), 1)
+
+    def test_missing_asking_price_is_noted_accurately(self):
+        # Regression guard: a property with no price set at all was
+        # previously (wrongly) reported as being "in an inconvertible
+        # unit" even when its unit (sqft) is perfectly convertible — the
+        # real reason is simply that no price was ever entered.
+        prop = _make_property(price=None, area_value=Decimal("100"), area_unit=Property.AreaUnit.SQFT)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        result = valuation.compute_valuation(run)
+        self.assertIn("no asking price set", result.methodology_notes)
+        self.assertNotIn("isn't auto-converted", result.methodology_notes)
+
+    def test_inconvertible_unit_is_noted_accurately(self):
+        prop = _make_property(price=Decimal("1000000"), area_value=Decimal("100"), area_unit=Property.AreaUnit.GAJ)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        result = valuation.compute_valuation(run)
+        self.assertIn("isn't auto-converted", result.methodology_notes)
+        self.assertNotIn("no asking price set", result.methodology_notes)
+
+
+class ScoringReadsRealValuationTests(TestCase):
+    """Confirms Phase 7's scoring engine (built before Phase 8 existed)
+    actually picks up a real computed valuation now that one exists."""
+
+    def test_price_valuation_score_has_signal_once_valuation_computed(self):
+        prop = _make_property(price=Decimal("2055000"), area_value=Decimal("108.70"), area_unit=Property.AreaUnit.SQM)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        PropertyComparable.objects.create(
+            property_listing=prop, analysis_run=run,
+            price=Decimal("1800000"), area_value=Decimal("94.23"), area_unit=Property.AreaUnit.SQM,
+        )
+        valuation.compute_valuation(run)
+
+        score, has_signal = scoring._price_valuation_score(AnalysisRun.objects.get(pk=run.pk))
+        self.assertTrue(has_signal)
+        # 1 comparable -> market score of exactly 40+10=50, same number as
+        # DEFAULT_CATEGORY_SCORE by coincidence — has_signal is the real
+        # assertion here, not the score's magnitude.
+        market_score, market_has_signal = scoring._market_score(AnalysisRun.objects.get(pk=run.pk))
+        self.assertTrue(market_has_signal)
+        self.assertEqual(market_score, 50)
+
+
+class ComputeValuationAdminViewTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_requires_post(self):
+        url = reverse("admin:investment_analysisrun_compute_valuation", args=[self.run.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+
+    def test_post_computes_and_redirects(self):
+        PropertyComparable.objects.create(
+            property_listing=self.run.property_listing, analysis_run=self.run,
+            price=Decimal("1800000"), area_value=Decimal("94.23"), area_unit=Property.AreaUnit.SQM,
+        )
+        url = reverse("admin:investment_analysisrun_compute_valuation", args=[self.run.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+        self.assertTrue(PropertyValuation.objects.filter(analysis_run=self.run).exists())
+
+    def test_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_analysisrun_compute_valuation", args=[self.run.pk])
+        self.assertEqual(self.client.post(url).status_code, 302)
+
+    def test_change_form_shows_button(self):
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "Compute Valuation")

@@ -11,7 +11,7 @@ from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 
-from . import ai_analyst, due_diligence, reports, risk_engine, scoring, services
+from . import ai_analyst, due_diligence, reports, risk_engine, scoring, services, valuation
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -114,6 +114,17 @@ class PropertyScoreInline(admin.StackedInline):
 class PropertyValuationInline(admin.StackedInline):
     model = PropertyValuation
     extra = 0
+    # Written by valuation.compute_valuation() — never hand-entered.
+    readonly_fields = (
+        "median_comparable_price_per_unit",
+        "lower_range_price_per_unit",
+        "upper_range_price_per_unit",
+        "asking_price_per_unit",
+        "premium_discount_percent",
+        "comparable_count",
+        "methodology_notes",
+        "calculated_at",
+    )
 
 
 class FieldOverrideLogInline(admin.TabularInline):
@@ -183,6 +194,11 @@ class AnalysisRunAdmin(admin.ModelAdmin):
                 name="investment_analysisrun_compute_risks",
             ),
             path(
+                "<int:object_id>/compute-valuation/",
+                self.admin_site.admin_view(self.compute_valuation_view),
+                name="investment_analysisrun_compute_valuation",
+            ),
+            path(
                 "<int:object_id>/generate-summary/",
                 self.admin_site.admin_view(self.generate_summary_view),
                 name="investment_analysisrun_generate_summary",
@@ -218,6 +234,24 @@ class AnalysisRunAdmin(admin.ModelAdmin):
             request,
             f"Score: {result.overall_score}/100 (confidence {result.confidence_score}/100).",
         )
+        return redirect(_analysis_run_change_url(analysis_run))
+
+    def compute_valuation_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_change_permission(request, analysis_run):
+            return HttpResponseForbidden()
+
+        result = valuation.compute_valuation(analysis_run)
+        if result.comparable_count:
+            self.message_user(
+                request,
+                f"Valuation computed from {result.comparable_count} comparable(s): "
+                f"median ₹{result.median_comparable_price_per_unit}/sqm.",
+            )
+        else:
+            self.message_user(request, "No usable comparables yet — add some below first.", level=messages.WARNING)
         return redirect(_analysis_run_change_url(analysis_run))
 
     def compute_risks_view(self, request, object_id):

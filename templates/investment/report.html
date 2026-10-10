@@ -77,6 +77,29 @@
   <p>Not yet generated — use "Generate AI Summary" on the analysis run.</p>
 {% endif %}
 
+{% with v=run.valuation %}
+<h2>Valuation</h2>
+{% if v and v.comparable_count %}
+  <table>
+    <tr><th>Comparable properties used</th><td>{{ v.comparable_count }}</td></tr>
+    <tr><th>Median comparable price</th><td>&#8377;{{ v.median_comparable_price_per_unit }}/sqm</td></tr>
+    <tr><th>Range</th><td>&#8377;{{ v.lower_range_price_per_unit }} &ndash; &#8377;{{ v.upper_range_price_per_unit }}/sqm</td></tr>
+    {% if v.asking_price_per_unit %}
+      <tr><th>This property's asking price</th><td>&#8377;{{ v.asking_price_per_unit }}/sqm</td></tr>
+    {% endif %}
+    {% if v.premium_discount_percent is not None %}
+      <tr>
+        <th>{% if v.premium_discount_percent >= 0 %}Premium{% else %}Discount{% endif %} vs. median</th>
+        <td>{{ v.premium_discount_percent }}%</td>
+      </tr>
+    {% endif %}
+  </table>
+  {% if v.methodology_notes %}<p class="help">{{ v.methodology_notes }}</p>{% endif %}
+{% else %}
+  <p>Not yet computed &mdash; add comparable properties and use "Compute Valuation" on the analysis run.</p>
+{% endif %}
+{% endwith %}
+
 <h2>Due-Diligence Checklist</h2>
 <table>
   <thead><tr><th>Category</th><th>Status</th><th>Notes</th></tr></thead>

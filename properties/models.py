@@ -57,6 +57,7 @@ class Property(models.Model):
 
     class AreaUnit(models.TextChoices):
         SQFT = "sqft", "Sq. Ft."
+        SQM = "sqm", "Sq. Metres"
         GAJ = "gaj", "Gaj"
         NALI = "nali", "Nali"
         BIGHA = "bigha", "Bigha"
