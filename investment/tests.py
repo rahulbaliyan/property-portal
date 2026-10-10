@@ -19,6 +19,11 @@ Every test class that uploads a real file is decorated with
 (the local/test storage backend) writes real files into this project's
 actual media/ directory on every run. Mirrors duediligence/tests.py's own
 TEST_MEDIA_ROOT pattern.
+
+Phase 6 tests: due_diligence.run_due_diligence()'s bridge into real
+duediligence.TitleCheckReport/KhasraEntry/MutationEntry fixtures (built
+directly, not via a live Bhulekh fetch — same boundary duediligence's own
+tests mock at) and the admin wiring for the "Run Due Diligence" button.
 """
 
 import hashlib
@@ -34,9 +39,10 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from duediligence.models import KhasraEntry, KhataLookup, MutationEntry, TitleCheckReport
 from properties.models import Property
 
-from . import document_ai, services
+from . import document_ai, due_diligence, services
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -772,3 +778,185 @@ class AnalyzeDocumentAdminViewTests(TestCase):
         url = reverse("admin:investment_propertydocument_change", args=[self.document.pk])
         response = self.client.get(url)
         self.assertContains(response, "Analyze with AI")
+
+
+class RunDueDiligenceNoReportTests(TestCase):
+    def test_no_title_check_report_leaves_bridged_categories_pending(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        due_diligence.run_due_diligence(run)
+
+        for category in (
+            DueDiligenceCheck.Category.REGISTRY,
+            DueDiligenceCheck.Category.OWNERSHIP,
+            DueDiligenceCheck.Category.LITIGATION,
+        ):
+            check = DueDiligenceCheck.objects.get(analysis_run=run, category=category)
+            self.assertEqual(check.status, DueDiligenceCheck.Status.PENDING_VERIFICATION)
+            self.assertTrue(check.verification_required)
+
+    def test_incomplete_report_also_leaves_bridged_categories_pending(self):
+        prop = _make_property()
+        TitleCheckReport.objects.create(property=prop, status=TitleCheckReport.Status.QUEUED)
+        run = AnalysisRun.objects.create(property_listing=prop)
+        due_diligence.run_due_diligence(run)
+
+        check = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.REGISTRY)
+        self.assertEqual(check.status, DueDiligenceCheck.Status.PENDING_VERIFICATION)
+        self.assertIn("Queued", check.notes)
+
+    def test_every_other_category_set_to_unknown_and_verification_required(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        due_diligence.run_due_diligence(run)
+
+        for category in DueDiligenceCheck.Category.values:
+            if category in (
+                DueDiligenceCheck.Category.REGISTRY,
+                DueDiligenceCheck.Category.OWNERSHIP,
+                DueDiligenceCheck.Category.LITIGATION,
+            ):
+                continue
+            check = DueDiligenceCheck.objects.get(analysis_run=run, category=category)
+            self.assertEqual(check.status, DueDiligenceCheck.Status.UNKNOWN)
+            self.assertTrue(check.verification_required)
+
+    def test_manually_set_non_bridged_category_is_not_clobbered_on_rerun(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        DueDiligenceCheck.objects.create(
+            analysis_run=run,
+            category=DueDiligenceCheck.Category.LAND_USE,
+            status=DueDiligenceCheck.Status.PASS,
+            notes="Reviewed manually by an admin.",
+        )
+        due_diligence.run_due_diligence(run)
+
+        check = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LAND_USE)
+        self.assertEqual(check.status, DueDiligenceCheck.Status.PASS)
+        self.assertIn("Reviewed manually", check.notes)
+
+
+class RunDueDiligenceWithReportTests(TestCase):
+    def _complete_report(self, property_listing, risk_level=TitleCheckReport.RiskLevel.GREEN):
+        return TitleCheckReport.objects.create(
+            property=property_listing,
+            status=TitleCheckReport.Status.COMPLETE,
+            risk_level=risk_level,
+        )
+
+    def test_clean_match_passes_registry_and_ownership_with_evidence(self):
+        prop = _make_property()
+        report = self._complete_report(prop)
+        KhasraEntry.objects.create(
+            report=report, khasra_number="53 KA", lookup_status=KhasraEntry.LookupStatus.FOUND,
+            seller_match=True, seller_match_score=100, buyer_match=True, buyer_match_score=97,
+            area_match=True, amount_match=True, date_match=True,
+        )
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        due_diligence.run_due_diligence(run)
+
+        registry = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.REGISTRY)
+        ownership = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP)
+        self.assertEqual(registry.status, DueDiligenceCheck.Status.PASS)
+        self.assertEqual(ownership.status, DueDiligenceCheck.Status.PASS)
+        self.assertFalse(registry.verification_required)
+
+        evidence = Evidence.objects.filter(analysis_run=run, claim__startswith="Bhulekh match")
+        self.assertEqual(evidence.count(), 5)  # seller, buyer, area, amount, date
+        for item in evidence:
+            self.assertEqual(item.verification_status, Evidence.VerificationStatus.VERIFIED)
+
+    def test_mismatch_fails_ownership_and_registry_reflects_red(self):
+        prop = _make_property()
+        report = self._complete_report(prop, risk_level=TitleCheckReport.RiskLevel.RED)
+        KhasraEntry.objects.create(
+            report=report, khasra_number="53 KA", lookup_status=KhasraEntry.LookupStatus.FOUND,
+            seller_match=False, buyer_match=True,
+        )
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        due_diligence.run_due_diligence(run)
+
+        registry = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.REGISTRY)
+        ownership = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.OWNERSHIP)
+        self.assertEqual(registry.status, DueDiligenceCheck.Status.FAIL)
+        self.assertEqual(ownership.status, DueDiligenceCheck.Status.FAIL)
+
+        disputed = Evidence.objects.get(analysis_run=run, claim__contains="Seller name")
+        self.assertEqual(disputed.verification_status, Evidence.VerificationStatus.DISPUTED)
+
+    def test_litigation_flagged_mutation_sets_warning(self):
+        prop = _make_property()
+        report = self._complete_report(prop)
+        lookup = KhataLookup.objects.create(report=report, khata_number="8", fetch_status=KhataLookup.FetchStatus.OK)
+        MutationEntry.objects.create(
+            khata_lookup=lookup, sequence=0, raw_text="...",
+            is_litigation_flagged=True, matched_litigation_keywords="स्थाई निषेधाज्ञा",
+        )
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        due_diligence.run_due_diligence(run)
+
+        litigation = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LITIGATION)
+        self.assertEqual(litigation.status, DueDiligenceCheck.Status.WARNING)
+        self.assertIn("स्थाई निषेधाज्ञा", litigation.notes)
+
+    def test_no_litigation_language_passes(self):
+        prop = _make_property()
+        report = self._complete_report(prop)
+        lookup = KhataLookup.objects.create(report=report, khata_number="8", fetch_status=KhataLookup.FetchStatus.OK)
+        MutationEntry.objects.create(khata_lookup=lookup, sequence=0, raw_text="...", is_litigation_flagged=False)
+        run = AnalysisRun.objects.create(property_listing=prop)
+
+        due_diligence.run_due_diligence(run)
+
+        litigation = DueDiligenceCheck.objects.get(analysis_run=run, category=DueDiligenceCheck.Category.LITIGATION)
+        self.assertEqual(litigation.status, DueDiligenceCheck.Status.PASS)
+
+    def test_rerun_replaces_bhulekh_evidence_instead_of_duplicating(self):
+        prop = _make_property()
+        report = self._complete_report(prop)
+        entry = KhasraEntry.objects.create(
+            report=report, khasra_number="53 KA", lookup_status=KhasraEntry.LookupStatus.FOUND,
+            seller_match=False,
+        )
+        run = AnalysisRun.objects.create(property_listing=prop)
+        due_diligence.run_due_diligence(run)
+        self.assertEqual(Evidence.objects.filter(analysis_run=run, claim__startswith="Bhulekh match").count(), 1)
+
+        entry.seller_match = True
+        entry.save()
+        due_diligence.run_due_diligence(run)
+
+        remaining = Evidence.objects.filter(analysis_run=run, claim__startswith="Bhulekh match")
+        self.assertEqual(remaining.count(), 1)
+        self.assertIn("matches Bhulekh record", remaining.first().claim)
+        self.assertNotIn("does NOT match", remaining.first().claim)
+
+
+class RunDueDiligenceAdminViewTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+        self.run = AnalysisRun.objects.create(property_listing=_make_property())
+
+    def test_rejects_get(self):
+        url = reverse("admin:investment_analysisrun_run_due_diligence", args=[self.run.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+
+    def test_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_analysisrun_run_due_diligence", args=[self.run.pk])
+        self.assertEqual(self.client.post(url).status_code, 302)
+
+    def test_post_runs_and_redirects(self):
+        url = reverse("admin:investment_analysisrun_run_due_diligence", args=[self.run.pk])
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("admin:investment_analysisrun_change", args=[self.run.pk]))
+        self.assertTrue(DueDiligenceCheck.objects.filter(analysis_run=self.run).exists())
+
+    def test_change_form_shows_button(self):
+        url = reverse("admin:investment_analysisrun_change", args=[self.run.pk])
+        response = self.client.get(url)
+        self.assertContains(response, "Run Due Diligence")

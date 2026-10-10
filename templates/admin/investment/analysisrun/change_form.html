@@ -1,0 +1,24 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_related_objects %}
+  {{ block.super }}
+  {% if change %}
+    <div class="submit-row">
+      {% comment %}
+        formaction/formmethod on a plain submit input, not a nested
+        <form> — a nested form inside admin's own <form> is invalid HTML
+        that browsers silently rewrite. See duediligence's own
+        change_form.html, where this was confirmed happening for real.
+      {% endcomment %}
+      <input type="submit" formaction="{% url 'admin:investment_analysisrun_run_due_diligence' original.pk %}" formmethod="post" formnovalidate value="Run Due Diligence" class="default">
+    </div>
+    <p class="help">
+      Save any changes below first. Pulls in the latest Bhulekh title
+      check (duediligence) for this property for the Registry, Ownership,
+      and Litigation categories — every other category is left as-is if
+      you've already reviewed it, or set to Unknown if not.
+    </p>
+  {% else %}
+    <p class="help">Save this analysis run first to unlock "Run Due Diligence".</p>
+  {% endif %}
+{% endblock %}

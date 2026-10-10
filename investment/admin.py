@@ -11,7 +11,7 @@ from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 
-from . import services
+from . import due_diligence, services
 from .models import (
     AnalysisRun,
     DocumentAnalysis,
@@ -117,6 +117,7 @@ class AnalysisRunAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("property_listing__title",)
     autocomplete_fields = ["property_listing"]
+    change_form_template = "admin/investment/analysisrun/change_form.html"
     inlines = [
         DueDiligenceCheckInline,
         PropertyRiskInline,
@@ -147,6 +148,28 @@ class AnalysisRunAdmin(admin.ModelAdmin):
         if formset.model is PropertyDocument:
             for obj in instances:
                 _warn_if_duplicate(self, request, obj, _duplicate_after_save(obj))
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:object_id>/run-due-diligence/",
+                self.admin_site.admin_view(self.run_due_diligence_view),
+                name="investment_analysisrun_run_due_diligence",
+            ),
+        ]
+        return custom + urls
+
+    def run_due_diligence_view(self, request, object_id):
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        analysis_run = get_object_or_404(AnalysisRun, pk=object_id)
+        if not self.has_change_permission(request, analysis_run):
+            return HttpResponseForbidden()
+
+        due_diligence.run_due_diligence(analysis_run)
+        self.message_user(request, "Due diligence checks updated.")
+        return redirect(reverse("admin:investment_analysisrun_change", args=[analysis_run.pk]))
 
 
 class DocumentAnalysisInline(admin.StackedInline):
