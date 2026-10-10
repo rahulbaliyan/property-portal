@@ -195,10 +195,22 @@ def _truncate_to_field_lengths(model, fields: dict) -> dict:
     }
 
 
+def _normalize_khasra_token(token: str) -> str:
+    """Strips ALL internal whitespace, not just leading/trailing — confirmed
+    against real data that Bhulekh itself is inconsistent about this for a
+    sub-divided khasra's letter suffix: lookup_khasra's JSON API returns
+    "53क" (no space) while the mutation-log HTML text for the exact same
+    plot uses "53 क" (with one). An exact-match comparison between the two
+    silently found nothing for a real property that was, in fact, a clean
+    match on every other field."""
+    return re.sub(r"\s+", "", token.strip())
+
+
 def _find_latest_mutation_for_khasra(khata_lookup: KhataLookup, khasra_number: str):
+    target = _normalize_khasra_token(khasra_number)
     for mutation in khata_lookup.mutation_entries.order_by("-sequence"):
-        tokens = [t.strip() for t in mutation.khasra_numbers_in_entry.split(",")]
-        if khasra_number.strip() in tokens:
+        tokens = [_normalize_khasra_token(t) for t in mutation.khasra_numbers_in_entry.split(",")]
+        if target in tokens:
             return mutation
     return None
 
@@ -276,9 +288,10 @@ def _parse_area_sqm_for_khasra(area_text: str, khasra_number: str) -> Decimal | 
     nali, gaj, acre — all regionally ambiguous) remain deliberately
     unconverted, to avoid a wrong silent conversion producing false
     confidence."""
+    target = _normalize_khasra_token(khasra_number)
     for match in _AREA_ENTRY_RE.finditer(area_text or ""):
         khasra_token, value_str, unit = match.groups()
-        if khasra_token.strip() == khasra_number.strip():
+        if _normalize_khasra_token(khasra_token) == target:
             try:
                 value = Decimal(value_str)
             except InvalidOperation:

@@ -320,6 +320,45 @@ class AreaUnitConversionTests(TestCase):
         area = services._parse_area_sqm_for_khasra("410: 2 बीघा", "410")
         self.assertIsNone(area)
 
+    def test_matches_despite_space_difference_in_khasra_token(self):
+        # Same Bhulekh API-inconsistency this module's lookup matching
+        # already works around — lookup_khasra returns "53क", the
+        # mutation-log area_text says "53 क" for the same plot.
+        area = services._parse_area_sqm_for_khasra("53 क: 0.0108 है0", "53क")
+        self.assertEqual(area, Decimal("108.0"))
+
+
+class FindLatestMutationForKhasraTests(TestCase):
+    """Confirmed against real data: Bhulekh itself is inconsistent about
+    whitespace in a sub-divided khasra's letter suffix between its two
+    APIs — lookup_khasra's JSON response said "53क" (no space) for the
+    exact same plot the mutation-log HTML text calls "53 क" (with one).
+    An exact-match comparison silently found nothing for a real property
+    that was, in fact, a clean match."""
+
+    def _lookup_with_entry(self, khasra_numbers_in_entry):
+        report = TitleCheckReport.objects.create()
+        lookup = KhataLookup.objects.create(
+            report=report, khata_number="8", fetch_status=KhataLookup.FetchStatus.OK
+        )
+        return lookup, MutationEntry.objects.create(
+            khata_lookup=lookup, sequence=0, raw_text="...",
+            khasra_numbers_in_entry=khasra_numbers_in_entry,
+        )
+
+    def test_matches_despite_space_difference(self):
+        lookup, entry = self._lookup_with_entry("53 क")
+        found = services._find_latest_mutation_for_khasra(lookup, "53क")
+        self.assertEqual(found, entry)
+
+    def test_matches_exact_token_as_before(self):
+        lookup, entry = self._lookup_with_entry("410,409")
+        self.assertEqual(services._find_latest_mutation_for_khasra(lookup, "410"), entry)
+
+    def test_no_match_for_a_genuinely_different_khasra(self):
+        lookup, _entry = self._lookup_with_entry("53 क")
+        self.assertIsNone(services._find_latest_mutation_for_khasra(lookup, "54"))
+
 
 class RunCheckServiceTests(TestCase):
     @patch("duediligence.services.bhulekh.fetch_khata_report_html")
