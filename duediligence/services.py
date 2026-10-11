@@ -410,8 +410,15 @@ def extract_deed(report: TitleCheckReport) -> None:
         report.save()
         return
 
-    for field in _DIRECT_COPY_FIELDS:
-        value = getattr(extracted, field)
+    # Same StringDataRightTruncation risk _truncate_to_field_lengths was
+    # built for on the Bhulekh-matching path, missed here: a multi-seller
+    # deed's combined seller_name easily exceeds the 200-char column
+    # (confirmed live — a real 4-seller deed's extracted name crashed
+    # report.save() with an uncaught DB error, a raw 500).
+    direct_values = _truncate_to_field_lengths(
+        TitleCheckReport, {field: getattr(extracted, field) for field in _DIRECT_COPY_FIELDS}
+    )
+    for field, value in direct_values.items():
         if value:
             setattr(report, field, value)
 

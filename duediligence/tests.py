@@ -860,3 +860,21 @@ class ExtractDeedServiceTests(TestCase):
 
         self.assertEqual(report.seller_name, "Already Typed By Admin")  # untouched
         self.assertEqual(report.buyer_name, "राजीव मित्तल")  # overwritten
+
+    @patch("duediligence.services.deed_ai.extract_deed_fields")
+    def test_overlong_direct_copy_field_is_truncated_not_crashed(self, mock_extract):
+        # Regression guard: a real 4-seller deed's combined seller_name
+        # (each with a full address) exceeded seller_name's 200-char
+        # column and crashed report.save() with an uncaught DB error — a
+        # raw 500, confirmed live. seller_name here is 400 chars,
+        # deliberately double the column's max_length.
+        schema = deed_ai.DeedExtractionSchema(seller_name="अ" * 400, buyer_name="राजीव मित्तल")
+        mock_extract.return_value = (schema, "{}")
+        report = self._report_with_pdf()
+
+        services.extract_deed(report)  # must not raise
+        report.refresh_from_db()
+
+        self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.COMPLETE)
+        self.assertEqual(len(report.seller_name), 200)  # truncated to fit, not dropped
+        self.assertEqual(report.buyer_name, "राजीव मित्तल")  # unaffected
