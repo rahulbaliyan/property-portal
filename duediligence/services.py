@@ -410,50 +410,70 @@ def extract_deed(report: TitleCheckReport) -> None:
         report.save()
         return
 
-    # Same StringDataRightTruncation risk _truncate_to_field_lengths was
-    # built for on the Bhulekh-matching path, missed here: a multi-seller
-    # deed's combined seller_name easily exceeds the 200-char column
-    # (confirmed live — a real 4-seller deed's extracted name crashed
-    # report.save() with an uncaught DB error, a raw 500).
-    direct_values = _truncate_to_field_lengths(
-        TitleCheckReport, {field: getattr(extracted, field) for field in _DIRECT_COPY_FIELDS}
-    )
-    for field, value in direct_values.items():
-        if value:
-            setattr(report, field, value)
+    # Everything below is the AI's own unvalidated output reaching real DB
+    # columns with real constraints (CharField lengths, DecimalField
+    # precision) — confirmed live that this crashed with an uncaught
+    # DataError (a raw 500, no useful error page since DEBUG=False in
+    # production) on a real deed. _truncate_to_field_lengths handles the
+    # two known CharField risks (seller/buyer/etc., and khasra_number);
+    # the broad try/except is the backstop for anything else extracted
+    # content could violate (e.g. a consideration_amount with more
+    # integer digits than the column allows) — this function's own
+    # contract is to never raise to the caller, which the code before
+    # this point already honors field-by-field, so the backstop here
+    # closes the gap rather than replacing that care.
+    try:
+        direct_values = _truncate_to_field_lengths(
+            TitleCheckReport, {field: getattr(extracted, field) for field in _DIRECT_COPY_FIELDS}
+        )
+        for field, value in direct_values.items():
+            if value:
+                setattr(report, field, value)
 
-    if extracted.deed_date:
-        try:
-            report.deed_date = date.fromisoformat(extracted.deed_date)
-        except ValueError:
-            pass  # left as-is; noted in confidence_notes / raw response for review
+        if extracted.deed_date:
+            try:
+                report.deed_date = date.fromisoformat(extracted.deed_date)
+            except ValueError:
+                pass  # left as-is; noted in confidence_notes / raw response for review
 
-    if extracted.consideration_amount:
-        try:
-            report.consideration_amount = Decimal(extracted.consideration_amount)
-        except InvalidOperation:
-            pass
+        if extracted.consideration_amount:
+            try:
+                report.consideration_amount = Decimal(extracted.consideration_amount)
+            except InvalidOperation:
+                pass
 
-    if extracted.deed_area_value:
-        try:
-            report.deed_area_value = Decimal(extracted.deed_area_value)
-        except InvalidOperation:
-            pass
+        if extracted.deed_area_value:
+            try:
+                report.deed_area_value = Decimal(extracted.deed_area_value)
+            except InvalidOperation:
+                pass
 
-    if extracted.deed_area_unit in TitleCheckReport.DeedAreaUnit.values:
-        report.deed_area_unit = extracted.deed_area_unit
+        if extracted.deed_area_unit in TitleCheckReport.DeedAreaUnit.values:
+            report.deed_area_unit = extracted.deed_area_unit
 
-    existing_khasras = set(report.khasra_entries.values_list("khasra_number", flat=True))
-    next_order = report.khasra_entries.count()
-    for khasra_number in extracted.khasra_numbers:
-        if khasra_number and khasra_number not in existing_khasras:
-            KhasraEntry.objects.create(report=report, khasra_number=khasra_number, order=next_order)
-            existing_khasras.add(khasra_number)
-            next_order += 1
+        existing_khasras = set(report.khasra_entries.values_list("khasra_number", flat=True))
+        next_order = report.khasra_entries.count()
+        khasra_max_length = KhasraEntry._meta.get_field("khasra_number").max_length
+        for khasra_number in extracted.khasra_numbers:
+            khasra_number = khasra_number[:khasra_max_length] if khasra_number else khasra_number
+            if khasra_number and khasra_number not in existing_khasras:
+                KhasraEntry.objects.create(report=report, khasra_number=khasra_number, order=next_order)
+                existing_khasras.add(khasra_number)
+                next_order += 1
 
-    report.extraction_status = TitleCheckReport.ExtractionStatus.COMPLETE
-    report.extraction_raw_response = raw_json
-    report.extraction_notes = extracted.confidence_notes
-    report.extracted_at = timezone.now()
-    report.extraction_error = ""
-    report.save()
+        report.extraction_status = TitleCheckReport.ExtractionStatus.COMPLETE
+        report.extraction_raw_response = raw_json
+        report.extraction_notes = extracted.confidence_notes
+        report.extracted_at = timezone.now()
+        report.extraction_error = ""
+        report.save()
+    except Exception as exc:  # noqa: BLE001 — deliberately broad: this is the
+        # backstop for whatever the AI's output could violate in the DB
+        # that the field-by-field handling above doesn't already catch;
+        # this function's contract is to never raise to the caller.
+        report.extraction_status = TitleCheckReport.ExtractionStatus.ERROR
+        report.extraction_error = (
+            f"Extraction succeeded but saving the result failed: {exc.__class__.__name__}: {exc}"
+        )
+        report.extracted_at = timezone.now()
+        report.save()

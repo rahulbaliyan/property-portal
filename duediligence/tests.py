@@ -878,3 +878,39 @@ class ExtractDeedServiceTests(TestCase):
         self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.COMPLETE)
         self.assertEqual(len(report.seller_name), 200)  # truncated to fit, not dropped
         self.assertEqual(report.buyer_name, "राजीव मित्तल")  # unaffected
+
+    @patch("duediligence.services.deed_ai.extract_deed_fields")
+    def test_overlong_khasra_number_is_truncated_not_crashed(self, mock_extract):
+        schema = deed_ai.DeedExtractionSchema(khasra_numbers=["5" * 30, "410"])
+        mock_extract.return_value = (schema, "{}")
+        report = self._report_with_pdf()
+
+        services.extract_deed(report)  # must not raise
+        report.refresh_from_db()
+
+        self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.COMPLETE)
+        khasra_numbers = list(report.khasra_entries.values_list("khasra_number", flat=True))
+        self.assertIn("410", khasra_numbers)
+        truncated = next(k for k in khasra_numbers if k != "410")
+        self.assertEqual(len(truncated), 20)  # truncated to fit, not dropped
+
+    @patch("duediligence.services.deed_ai.extract_deed_fields")
+    def test_unexpected_save_failure_is_caught_not_raised(self, mock_extract):
+        # The backstop for anything the field-by-field handling above
+        # doesn't already cover (e.g. a DecimalField precision overflow,
+        # which SQLite's test DB doesn't enforce the way production's
+        # Postgres does — this test proves the backstop itself works,
+        # independent of what DB-level error eventually triggers it).
+        schema = deed_ai.DeedExtractionSchema(seller_name="राजीव मित्तल")
+        mock_extract.return_value = (schema, "{}")
+        report = self._report_with_pdf()
+
+        with patch.object(TitleCheckReport, "save", side_effect=[RuntimeError("numeric field overflow"), None]):
+            services.extract_deed(report)  # must not raise
+
+        # Checking the in-memory object, not refresh_from_db(): .save() is
+        # mocked to a no-op here, so nothing was actually persisted — the
+        # thing under test is that extract_deed() set these attributes
+        # and returned normally instead of raising.
+        self.assertEqual(report.extraction_status, TitleCheckReport.ExtractionStatus.ERROR)
+        self.assertIn("numeric field overflow", report.extraction_error)
