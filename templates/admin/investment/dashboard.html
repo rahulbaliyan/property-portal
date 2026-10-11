@@ -1,0 +1,73 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<h1>Investment Dashboard</h1>
+
+<div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:24px;">
+  <div style="background:#fff; border:1px solid #ddd; border-radius:6px; padding:14px 20px; min-width:160px;">
+    <div style="font-size:1.8em; font-weight:700;">{{ total_properties_analyzed }}</div>
+    <div style="color:#666;">Properties analyzed</div>
+  </div>
+  <div style="background:#fff; border:1px solid #ddd; border-radius:6px; padding:14px 20px; min-width:160px;">
+    <div style="font-size:1.8em; font-weight:700;">{{ total_runs }}</div>
+    <div style="color:#666;">Analysis runs</div>
+  </div>
+  <div style="background:#fff; border:1px solid #ddd; border-radius:6px; padding:14px 20px; min-width:160px;">
+    <div style="font-size:1.8em; font-weight:700;">{{ total_documents }}</div>
+    <div style="color:#666;">Documents processed</div>
+  </div>
+  <div style="background:#fff; border:1px solid #ddd; border-radius:6px; padding:14px 20px; min-width:160px;">
+    <div style="font-size:1.8em; font-weight:700;">{{ avg_confidence|default:"—" }}</div>
+    <div style="color:#666;">Avg. confidence</div>
+  </div>
+  <div style="background:#fff; border:1px solid #c9962e; border-radius:6px; padding:14px 20px; min-width:160px;">
+    <div style="font-size:1.8em; font-weight:700; color:#c9962e;">{{ pending_verification_count }}</div>
+    <div style="color:#666;">Runs with unverified categories</div>
+  </div>
+  <div style="background:#fff; border:1px solid #b3261e; border-radius:6px; padding:14px 20px; min-width:160px;">
+    <div style="font-size:1.8em; font-weight:700; color:#b3261e;">{{ high_risk_count }}</div>
+    <div style="color:#666;">Runs with a high/critical risk</div>
+  </div>
+  {% if analysis_failures %}
+    <div style="background:#fff; border:1px solid #b3261e; border-radius:6px; padding:14px 20px; min-width:160px;">
+      <div style="font-size:1.8em; font-weight:700; color:#b3261e;">{{ analysis_failures }}</div>
+      <div style="color:#666;">Analysis failures</div>
+    </div>
+  {% endif %}
+</div>
+
+<div style="display:flex; gap:40px; flex-wrap:wrap;">
+  <div>
+    <h2>By score range</h2>
+    <table>
+      {% for label, count in score_ranges %}
+        <tr><th style="text-align:left; padding-right:16px;">{{ label }}</th><td>{{ count }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div>
+    <h2>By property type</h2>
+    <table>
+      {% for label, count in by_property_type %}
+        <tr><th style="text-align:left; padding-right:16px;">{{ label }}</th><td>{{ count }}</td></tr>
+      {% empty %}
+        <tr><td>No analysis runs yet.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div>
+    <h2>By region</h2>
+    <table>
+      {% for label, count in by_region %}
+        <tr><th style="text-align:left; padding-right:16px;">{{ label }}</th><td>{{ count }}</td></tr>
+      {% empty %}
+        <tr><td>No analysis runs yet.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<p style="margin-top:24px;"><a href="{% url 'admin:investment_analysisrun_changelist' %}">&larr; Back to Analysis Runs</a></p>
+{% endblock %}

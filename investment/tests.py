@@ -45,6 +45,7 @@ from properties.models import Property
 
 from . import (
     ai_analyst,
+    dashboard,
     data_quality,
     document_ai,
     due_diligence,
@@ -2347,3 +2348,111 @@ class ApiAnalyzeEndpointTests(TestCase):
         url = reverse("investment:api_property_analyze", args=[self.property.pk])
         response = csrf_client.post(url)
         self.assertEqual(response.status_code, 403)
+
+
+class DashboardContextTests(TestCase):
+    def test_empty_database_does_not_crash(self):
+        context = dashboard.build_dashboard_context()
+        self.assertEqual(context["total_runs"], 0)
+        self.assertEqual(context["total_properties_analyzed"], 0)
+        self.assertIsNone(context["avg_confidence"])
+        self.assertEqual(context["pending_verification_count"], 0)
+        self.assertEqual(context["high_risk_count"], 0)
+
+    def test_counts_runs_and_distinct_properties(self):
+        prop_a = _make_property(title="A")
+        prop_b = _make_property(title="B")
+        AnalysisRun.objects.create(property_listing=prop_a)
+        AnalysisRun.objects.create(property_listing=prop_a)  # second run, same property
+        AnalysisRun.objects.create(property_listing=prop_b)
+
+        context = dashboard.build_dashboard_context()
+        self.assertEqual(context["total_runs"], 3)
+        self.assertEqual(context["total_properties_analyzed"], 2)
+
+    def test_score_ranges_bucketed_correctly(self):
+        run_low = AnalysisRun.objects.create(property_listing=_make_property(title="Low"))
+        run_mid = AnalysisRun.objects.create(property_listing=_make_property(title="Mid"))
+        run_high = AnalysisRun.objects.create(property_listing=_make_property(title="High"))
+        PropertyScore.objects.create(analysis_run=run_low, overall_score=20, confidence_score=50)
+        PropertyScore.objects.create(analysis_run=run_mid, overall_score=55, confidence_score=50)
+        PropertyScore.objects.create(analysis_run=run_high, overall_score=90, confidence_score=50)
+
+        ranges = dict(dashboard.build_dashboard_context()["score_ranges"])
+        self.assertEqual(ranges["0–39 — High risk"], 1)
+        self.assertEqual(ranges["40–69 — Review needed"], 1)
+        self.assertEqual(ranges["70–100 — Good"], 1)
+
+    def test_average_confidence_computed(self):
+        run_a = AnalysisRun.objects.create(property_listing=_make_property(title="A"))
+        run_b = AnalysisRun.objects.create(property_listing=_make_property(title="B"))
+        PropertyScore.objects.create(analysis_run=run_a, overall_score=50, confidence_score=20)
+        PropertyScore.objects.create(analysis_run=run_b, overall_score=50, confidence_score=60)
+
+        self.assertEqual(dashboard.build_dashboard_context()["avg_confidence"], 40.0)
+
+    def test_pending_verification_counts_distinct_runs_not_checks(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        due_diligence.run_due_diligence(run)  # creates 17 Unknown/Pending checks on ONE run
+        self.assertEqual(dashboard.build_dashboard_context()["pending_verification_count"], 1)
+
+    def test_high_risk_counts_distinct_runs(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.LEGAL,
+            severity=PropertyRisk.Severity.HIGH, reason="One.",
+        )
+        PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.MARKET,
+            severity=PropertyRisk.Severity.CRITICAL, reason="Two.",
+        )
+        # Two HIGH/CRITICAL risks on the same run must count as 1 run, not 2.
+        self.assertEqual(dashboard.build_dashboard_context()["high_risk_count"], 1)
+
+    def test_low_severity_risk_not_counted_as_high_risk(self):
+        run = AnalysisRun.objects.create(property_listing=_make_property())
+        PropertyRisk.objects.create(
+            analysis_run=run, category=PropertyRisk.Category.LEGAL,
+            severity=PropertyRisk.Severity.LOW, reason="Minor.",
+        )
+        self.assertEqual(dashboard.build_dashboard_context()["high_risk_count"], 0)
+
+    def test_grouped_by_property_type_and_region_use_display_labels(self):
+        prop = _make_property(property_type=Property.PropertyType.VILLA, region=Property.Region.MUSSOORIE)
+        AnalysisRun.objects.create(property_listing=prop)
+
+        context = dashboard.build_dashboard_context()
+        self.assertIn(("Villa", 1), context["by_property_type"])
+        self.assertIn(("Mussoorie", 1), context["by_region"])
+
+
+class DashboardAdminViewTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_superuser(
+            username="staffer", password="pw", email="staffer@example.com"
+        )
+        self.client.login(username="staffer", password="pw")
+
+    def test_requires_staff(self):
+        self.client.logout()
+        url = reverse("admin:investment_analysisrun_dashboard")
+        self.assertEqual(self.client.get(url).status_code, 302)
+
+    def test_renders_with_no_data(self):
+        url = reverse("admin:investment_analysisrun_dashboard")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Investment Dashboard")
+
+    def test_renders_with_real_data(self):
+        prop = _make_property()
+        run = AnalysisRun.objects.create(property_listing=prop)
+        PropertyScore.objects.create(analysis_run=run, overall_score=76, confidence_score=61)
+        url = reverse("admin:investment_analysisrun_dashboard")
+        response = self.client.get(url)
+        self.assertContains(response, "70–100")
+
+    def test_changelist_links_to_dashboard(self):
+        url = reverse("admin:investment_analysisrun_changelist")
+        response = self.client.get(url)
+        self.assertContains(response, reverse("admin:investment_analysisrun_dashboard"))

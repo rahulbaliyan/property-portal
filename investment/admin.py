@@ -8,11 +8,12 @@ admin grew incrementally alongside its services module rather than upfront.
 
 from django.contrib import admin, messages
 from django.http import HttpResponseForbidden, HttpResponseNotAllowed
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 
 from . import (
     ai_analyst,
+    dashboard,
     data_quality,
     due_diligence,
     location_intelligence,
@@ -195,6 +196,7 @@ class AnalysisRunAdmin(admin.ModelAdmin):
     search_fields = ("property_listing__title",)
     autocomplete_fields = ["property_listing"]
     change_form_template = "admin/investment/analysisrun/change_form.html"
+    change_list_template = "admin/investment/analysisrun/change_list.html"
     readonly_fields = ("ai_summary", "ai_summary_raw_response", "ai_summary_error", "ai_summary_generated_at")
     inlines = [
         DueDiligenceCheckInline,
@@ -265,6 +267,11 @@ class AnalysisRunAdmin(admin.ModelAdmin):
                 "<int:object_id>/run-full-analysis/",
                 self.admin_site.admin_view(self.run_full_analysis_view),
                 name="investment_analysisrun_run_full_analysis",
+            ),
+            path(
+                "dashboard/",
+                self.admin_site.admin_view(self.dashboard_view),
+                name="investment_analysisrun_dashboard",
             ),
             path(
                 "<int:object_id>/generate-summary/",
@@ -373,6 +380,14 @@ class AnalysisRunAdmin(admin.ModelAdmin):
             f"(confidence {score.confidence_score}/100)." if score else "Full analysis complete.",
         )
         return redirect(_analysis_run_change_url(analysis_run))
+
+    def dashboard_view(self, request):
+        context = {
+            **self.admin_site.each_context(request),
+            **dashboard.build_dashboard_context(),
+            "title": "Investment Dashboard",
+        }
+        return render(request, "admin/investment/dashboard.html", context)
 
     def generate_summary_view(self, request, object_id):
         if request.method != "POST":
